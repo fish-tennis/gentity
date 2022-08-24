@@ -1,11 +1,10 @@
-package cache
+package gentity
 
 import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/fish-tennis/gentity"
-	"github.com/fish-tennis/gentity/logger"
+	"github.com/fish-tennis/gentity/util"
 	"github.com/go-redis/redis/v8"
 	"google.golang.org/protobuf/proto"
 	"reflect"
@@ -14,7 +13,7 @@ import (
 )
 
 // https://github.com/uber-go/guide/blob/master/style.md#verify-interface-compliance
-var _ gentity.KvCache = (*RedisCache)(nil)
+var _ KvCache = (*RedisCache)(nil)
 
 // KvCache的redis实现
 type RedisCache struct {
@@ -36,7 +35,7 @@ func ignoreNilError(redisError error) error {
 
 func (this *RedisCache) Get(key string) (string, error) {
 	data,err := this.redisClient.Get(context.Background(), key).Result()
-	return data,ignoreNilError(err)
+	return data, ignoreNilError(err)
 }
 
 func (this *RedisCache) Set(key string, value interface{}, expiration time.Duration) error {
@@ -60,7 +59,7 @@ func (this *RedisCache) Del(key ...string) error {
 
 func (this *RedisCache) Type(key string) (string, error) {
 	data,err := this.redisClient.Type(context.Background(), key).Result()
-	return data,ignoreNilError(err)
+	return data, ignoreNilError(err)
 }
 
 // redis hash -> map
@@ -154,12 +153,12 @@ func convertValueToString(val reflect.Value) (string, error) {
 		return val.String(), nil
 	case reflect.Interface:
 		if !val.CanInterface() {
-			logger.Error("unsupport type:%v", val.Kind())
+			Error("unsupport type:%v", val.Kind())
 			return "", errors.New(fmt.Sprintf("unsupport type:%v", val.Kind()))
 		}
-		return gentity.ToString(val.Interface())
+		return util.ToString(val.Interface())
 	default:
-		logger.Error("unsupport type:%v", val.Kind())
+		Error("unsupport type:%v", val.Kind())
 		return "", errors.New(fmt.Sprintf("unsupport type:%v", val.Kind()))
 	}
 }
@@ -174,14 +173,14 @@ func convertValueToStringOrInterface(val reflect.Value) (interface{},error) {
 	case reflect.Interface, reflect.Ptr:
 		if !val.IsNil() {
 			if !val.CanInterface() {
-				logger.Error("unsupport type:%v", val.Kind())
+				Error("unsupport type:%v", val.Kind())
 				return nil,errors.New(fmt.Sprintf("unsupport type:%v", val.Kind()))
 			}
 			i := val.Interface()
 			if protoMessage, ok := i.(proto.Message); ok {
 				bytes, protoErr := proto.Marshal(protoMessage)
 				if protoErr != nil {
-					logger.Error("proto err:%v", protoErr.Error())
+					Error("proto err:%v", protoErr.Error())
 					return nil, protoErr
 				}
 				return bytes,nil
@@ -189,35 +188,35 @@ func convertValueToStringOrInterface(val reflect.Value) (interface{},error) {
 			return i,nil
 		}
 	default:
-		logger.Error("unsupport type:%v", val.Kind())
+		Error("unsupport type:%v", val.Kind())
 		return nil,errors.New(fmt.Sprintf("unsupport type:%v", val.Kind()))
 	}
-	logger.Error("unsupport type:%v", val.Kind())
+	Error("unsupport type:%v", val.Kind())
 	return nil,errors.New(fmt.Sprintf("unsupport type:%v", val.Kind()))
 }
 
 func convertStringToRealType(typ reflect.Type, v string) interface{} {
 	switch typ.Kind() {
 	case reflect.Int:
-		return gentity.Atoi(v)
+		return util.Atoi(v)
 	case reflect.Int8:
-		return int8(gentity.Atoi(v))
+		return int8(util.Atoi(v))
 	case reflect.Int16:
-		return int16(gentity.Atoi(v))
+		return int16(util.Atoi(v))
 	case reflect.Int32:
-		return int32(gentity.Atoi(v))
+		return int32(util.Atoi(v))
 	case reflect.Int64:
-		return gentity.Atoi64(v)
+		return util.Atoi64(v)
 	case reflect.Uint:
-		return uint(gentity.Atou(v))
+		return uint(util.Atou(v))
 	case reflect.Uint8:
-		return uint8(gentity.Atou(v))
+		return uint8(util.Atou(v))
 	case reflect.Uint16:
-		return uint16(gentity.Atou(v))
+		return uint16(util.Atou(v))
 	case reflect.Uint32:
-		return uint32(gentity.Atou(v))
+		return uint32(util.Atou(v))
 	case reflect.Uint64:
-		return gentity.Atou(v)
+		return util.Atou(v)
 	case reflect.Float32:
 		f, _ := strconv.ParseFloat(v, 64)
 		return float32(f)
@@ -231,13 +230,13 @@ func convertStringToRealType(typ reflect.Type, v string) interface{} {
 		if protoMessage, ok := newProto.Interface().(proto.Message); ok {
 			protoErr := proto.Unmarshal([]byte(v), protoMessage)
 			if protoErr != nil {
-				logger.Error("proto err:%v", protoErr.Error())
+				Error("proto err:%v", protoErr.Error())
 				return protoErr
 			}
 			return protoMessage
 		}
 	}
-	logger.Error("unsupport type:%v", typ.Kind())
+	Error("unsupport type:%v", typ.Kind())
 	return nil
 }
 

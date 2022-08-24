@@ -2,7 +2,6 @@ package gentity
 
 import (
 	"google.golang.org/protobuf/proto"
-	"github.com/fish-tennis/gentity/logger"
 	"reflect"
 	"strings"
 )
@@ -27,7 +26,7 @@ func ConvertValueToInterface(srcType, dstType reflect.Type, v reflect.Value) int
 			return ConvertInterfaceToRealType(dstType, v.Interface())
 		}
 	}
-	logger.Error("unsupport type:%v", srcType.Kind())
+	Error("unsupport type:%v", srcType.Kind())
 	return nil
 }
 
@@ -42,7 +41,7 @@ func ConvertValueToInt(srcType reflect.Type, v reflect.Value) int64 {
 		// NOTE:有精度问题
 		return int64(v.Float())
 	}
-	logger.Error("unsupport type:%v", srcType.Kind())
+	Error("unsupport type:%v", srcType.Kind())
 	return 0
 }
 
@@ -87,7 +86,7 @@ func ConvertInterfaceToRealType(typ reflect.Type, v interface{}) interface{} {
 			}
 		}
 	}
-	logger.Error("unsupport type:%v", typ.Kind())
+	Error("unsupport type:%v", typ.Kind())
 	return nil
 }
 
@@ -114,7 +113,7 @@ func ConvertProtoToMap(protoMessage proto.Message) map[string]interface{} {
 			v = fieldVal.Interface()
 		}
 		if v == nil {
-			logger.Debug("%v %v nil", sf.Name, fieldVal.Kind())
+			Debug("%v %v nil", sf.Name, fieldVal.Kind())
 			continue
 		}
 		// 兼容mongodb,字段名小写

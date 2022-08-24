@@ -4,8 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/fish-tennis/gentity/cache"
-	"github.com/fish-tennis/gentity/logger"
+	"github.com/fish-tennis/gentity/util"
 	"github.com/go-redis/redis/v8"
 	"google.golang.org/protobuf/proto"
 	"reflect"
@@ -14,7 +13,7 @@ import (
 // 加载数据
 // 反序列化
 func LoadData(obj interface{}, sourceData interface{}) error {
-	if IsNil(sourceData) {
+	if util.IsNil(sourceData) {
 		return nil
 	}
 	structCache := GetSaveableStruct(reflect.TypeOf(obj))
@@ -27,7 +26,7 @@ func LoadData(obj interface{}, sourceData interface{}) error {
 		val := reflectVal.Field(fieldCache.FieldIndex)
 		if val.IsNil() {
 			if !val.CanSet() {
-				logger.Error("%v CanSet false", fieldCache.Name)
+				Error("%v CanSet false", fieldCache.Name)
 				return nil
 			}
 			newElem := reflect.New(fieldCache.StructField.Type)
@@ -48,7 +47,7 @@ func LoadData(obj interface{}, sourceData interface{}) error {
 						if protoMessage, ok2 := val.Interface().(proto.Message); ok2 {
 							err := proto.Unmarshal(bytes, protoMessage)
 							if err != nil {
-								logger.Error("%v proto.Unmarshal err:%v", fieldCache.Name, err.Error())
+								Error("%v proto.Unmarshal err:%v", fieldCache.Name, err.Error())
 								return err
 							}
 							return nil
@@ -117,7 +116,7 @@ func LoadData(obj interface{}, sourceData interface{}) error {
 		if sourceTyp.Kind() == reflect.Ptr {
 			protoMessage, ok := sourceData.(proto.Message)
 			if !ok {
-				logger.Error("unsupport type:%v", sourceTyp.Kind())
+				Error("unsupport type:%v", sourceTyp.Kind())
 				return errors.New(fmt.Sprintf("unsupport type:%v", sourceTyp.Kind()))
 			}
 			// mongodb中读出来是proto.Message格式,转换成map[string]interface{}
@@ -125,20 +124,20 @@ func LoadData(obj interface{}, sourceData interface{}) error {
 			sourceTyp = reflect.TypeOf(sourceData)
 		}
 		if sourceTyp.Kind() != reflect.Map {
-			logger.Error("unsupport type:%v", sourceTyp.Kind())
+			Error("unsupport type:%v", sourceTyp.Kind())
 			return errors.New("sourceData type error")
 		}
 		sourceVal := reflect.ValueOf(sourceData)
 		for _, fieldCache := range structCache.Children {
 			sourceFieldVal := sourceVal.MapIndex(reflect.ValueOf(fieldCache.Name))
 			if !sourceFieldVal.IsValid() {
-				logger.Debug("saveable not exists:%v", fieldCache.Name)
+				Debug("saveable not exists:%v", fieldCache.Name)
 				continue
 			}
 			val := reflectVal.Field(fieldCache.FieldIndex)
 			if val.IsNil() {
 				if !val.CanSet() {
-					logger.Error("child cant new field:%v", fieldCache.Name)
+					Error("child cant new field:%v", fieldCache.Name)
 					continue
 				}
 				newElem := reflect.New(fieldCache.StructField.Type)
@@ -147,7 +146,7 @@ func LoadData(obj interface{}, sourceData interface{}) error {
 			fieldInterface := val.Interface()
 			childLoadErr := LoadData(fieldInterface, sourceFieldVal.Interface())
 			if childLoadErr != nil {
-				logger.Error("child load error field:%v", fieldCache.Name)
+				Error("child load error field:%v", fieldCache.Name)
 				return childLoadErr
 			}
 		}
@@ -173,12 +172,12 @@ func LoadFromCache(obj interface{}, kvCache KvCache, cacheKey string) (bool, err
 			if fieldCache.StructField.Type.Kind() == reflect.Ptr || fieldCache.StructField.Type.Kind() == reflect.Interface {
 				if val.IsNil() {
 					if !val.CanSet() {
-						logger.Error("%v CanSet false", fieldCache.Name)
+						Error("%v CanSet false", fieldCache.Name)
 						return true, errors.New(fmt.Sprintf("%v CanSet false", fieldCache.Name))
 					}
 					newElem := reflect.New(fieldCache.StructField.Type)
 					val.Set(newElem)
-					logger.Debug("cacheKey:%v new %v", cacheKey, fieldCache.Name)
+					Debug("cacheKey:%v new %v", cacheKey, fieldCache.Name)
 				}
 				if !val.CanInterface() {
 					return true, errors.New(fmt.Sprintf("%v CanInterface false", fieldCache.Name))
@@ -186,8 +185,8 @@ func LoadFromCache(obj interface{}, kvCache KvCache, cacheKey string) (bool, err
 				if protoMessage, ok := val.Interface().(proto.Message); ok {
 					// []byte -> proto.Message
 					err = kvCache.GetProto(cacheKey, protoMessage)
-					if cache.IsRedisError(err) {
-						logger.Error("GetProto %v %v err:%v", cacheKey, cacheType, err)
+					if IsRedisError(err) {
+						Error("GetProto %v %v err:%v", cacheKey, cacheType, err)
 						return true, err
 					}
 					return true, nil
@@ -195,53 +194,53 @@ func LoadFromCache(obj interface{}, kvCache KvCache, cacheKey string) (bool, err
 			} else if fieldCache.StructField.Type.Kind() == reflect.Slice {
 				if val.IsNil() {
 					if !val.CanSet() {
-						logger.Error("%v CanSet false", fieldCache.Name)
+						Error("%v CanSet false", fieldCache.Name)
 						return true, errors.New(fmt.Sprintf("%v CanSet false", fieldCache.Name))
 					}
 					newElem := reflect.New(fieldCache.StructField.Type)
 					val.Set(newElem)
-					logger.Debug("cacheKey:%v new %v", cacheKey, fieldCache.Name)
+					Debug("cacheKey:%v new %v", cacheKey, fieldCache.Name)
 				}
 				if !val.CanInterface() {
 					return true, errors.New(fmt.Sprintf("%v CanInterface false", fieldCache.Name))
 				}
 				jsonData, err := kvCache.Get(cacheKey)
-				if cache.IsRedisError(err) {
-					logger.Error("Get %v %v err:%v", cacheKey, cacheType, err)
+				if IsRedisError(err) {
+					Error("Get %v %v err:%v", cacheKey, cacheType, err)
 					return true, err
 				}
 				fieldInterface := val.Addr().Interface()
 				err = json.Unmarshal([]byte(jsonData), fieldInterface)
 				if err != nil {
-					logger.Error("json.Unmarshal %v %v err:%v", cacheKey, val.Interface(), err)
+					Error("json.Unmarshal %v %v err:%v", cacheKey, val.Interface(), err)
 					return true, err
 				}
-				logger.Debug("%v json.Unmarshal", cacheKey)
+				Debug("%v json.Unmarshal", cacheKey)
 				return true, nil
 			}
 			return true, errors.New(fmt.Sprintf("unsupport kind:%v cacheKey:%v cacheType:%v", fieldCache.StructField.Type.Kind(), cacheKey, cacheType))
 		} else if cacheType == "hash" {
 			if val.IsNil() {
 				if !val.CanSet() {
-					logger.Error("%v CanSet false", fieldCache.Name)
+					Error("%v CanSet false", fieldCache.Name)
 					return true, errors.New(fmt.Sprintf("%v CanSet false", fieldCache.Name))
 				}
 				newElem := reflect.New(fieldCache.StructField.Type)
 				val.Set(newElem)
-				logger.Debug("cacheKey:%v new %v", cacheKey, fieldCache.Name)
+				Debug("cacheKey:%v new %v", cacheKey, fieldCache.Name)
 			}
 			if !val.CanInterface() {
 				return true, errors.New(fmt.Sprintf("%v CanInterface false", fieldCache.Name))
 			}
 			// hash -> map
 			err = kvCache.GetMap(cacheKey, val.Interface())
-			if cache.IsRedisError(err) {
-				logger.Error("GetMap %v %v err:%v", cacheKey, cacheType, err)
+			if IsRedisError(err) {
+				Error("GetMap %v %v err:%v", cacheKey, cacheType, err)
 				return true, err
 			}
 			return true, nil
 		} else {
-			logger.Error("%v unsupport cache type:%v", cacheKey, cacheType)
+			Error("%v unsupport cache type:%v", cacheKey, cacheType)
 			return true, errors.New(fmt.Sprintf("%v unsupport cache type:%v", cacheKey, cacheType))
 		}
 	} else {
@@ -249,12 +248,12 @@ func LoadFromCache(obj interface{}, kvCache KvCache, cacheKey string) (bool, err
 			val := reflectVal.Field(fieldCache.FieldIndex)
 			if val.IsNil() {
 				if !val.CanSet() {
-					logger.Error("%v CanSet false", fieldCache.Name)
+					Error("%v CanSet false", fieldCache.Name)
 					return true, errors.New(fmt.Sprintf("%v CanSet false", fieldCache.Name))
 				}
 				newElem := reflect.New(fieldCache.StructField.Type)
 				val.Set(newElem)
-				logger.Debug("cacheKey:%v new %v", cacheKey, fieldCache.Name)
+				Debug("cacheKey:%v new %v", cacheKey, fieldCache.Name)
 			}
 			fieldInterface := val.Interface()
 			hasCache, err := LoadFromCache(fieldInterface, kvCache, cacheKey+"."+fieldCache.Name)
@@ -262,7 +261,7 @@ func LoadFromCache(obj interface{}, kvCache KvCache, cacheKey string) (bool, err
 				continue
 			}
 			if err != nil {
-				logger.Error("LoadFromCache %v error:%v", cacheKey, err.Error())
+				Error("LoadFromCache %v error:%v", cacheKey, err.Error())
 				continue
 			}
 		}
@@ -285,34 +284,34 @@ func FixEntityDataFromCache(entity Entity, db EntityDb, kvCache KvCache, cacheKe
 				return true
 			}
 			if err != nil {
-				logger.Error("LoadFromCache %v error:%v", cacheKey, err.Error())
+				Error("LoadFromCache %v error:%v", cacheKey, err.Error())
 				return true
 			}
 			saveData, err := GetComponentSaveData(component)
 			if err != nil {
-				logger.Error("%v Save %v err %v", entity.GetId(), component.GetName(), err.Error())
+				Error("%v Save %v err %v", entity.GetId(), component.GetName(), err.Error())
 				return true
 			}
 			saveDbErr := db.SaveComponent(entity.GetId(), component.GetNameLower(), saveData)
 			if saveDbErr != nil {
-				logger.Error("%v SaveDb %v err %v", entity.GetId(), component.GetNameLower(), saveDbErr.Error())
+				Error("%v SaveDb %v err %v", entity.GetId(), component.GetNameLower(), saveDbErr.Error())
 				return true
 			}
-			logger.Info("%v -> %v", cacheKey, component.GetNameLower())
+			Info("%v -> %v", cacheKey, component.GetNameLower())
 			kvCache.Del(cacheKey)
-			logger.Info("RemoveCache %v", cacheKey)
+			Info("RemoveCache %v", cacheKey)
 		} else {
 			reflectVal := reflect.ValueOf(component).Elem()
 			for _, fieldCache := range structCache.Children {
 				val := reflectVal.Field(fieldCache.FieldIndex)
 				if val.IsNil() {
 					if !val.CanSet() {
-						logger.Error("%v CanSet false", fieldCache.Name)
+						Error("%v CanSet false", fieldCache.Name)
 						return true
 					}
 					newElem := reflect.New(fieldCache.StructField.Type)
 					val.Set(newElem)
-					logger.Debug("new %v", fieldCache.Name)
+					Debug("new %v", fieldCache.Name)
 				}
 				fieldInterface := val.Interface()
 				cacheKey := GetPlayerComponentChildCacheKey(entity.GetId(), component.GetName(), fieldCache.Name)
@@ -321,24 +320,24 @@ func FixEntityDataFromCache(entity Entity, db EntityDb, kvCache KvCache, cacheKe
 					return true
 				}
 				if err != nil {
-					logger.Error("LoadFromCache %v error:%v", cacheKey, err.Error())
+					Error("LoadFromCache %v error:%v", cacheKey, err.Error())
 					return true
 				}
-				logger.Debug("%v", fieldInterface)
+				Debug("%v", fieldInterface)
 				saveData, err := GetSaveData(fieldInterface, component.GetNameLower())
 				if err != nil {
-					logger.Error("%v Save %v.%v err %v", entity.GetId(), component.GetName(), fieldCache.Name, err.Error())
+					Error("%v Save %v.%v err %v", entity.GetId(), component.GetName(), fieldCache.Name, err.Error())
 					return true
 				}
-				logger.Debug("%v", saveData)
+				Debug("%v", saveData)
 				saveDbErr := db.SaveComponentField(entity.GetId(), component.GetNameLower(), fieldCache.Name, saveData)
 				if saveDbErr != nil {
-					logger.Error("%v SaveDb %v.%v err %v", entity.GetId(), component.GetNameLower(), fieldCache.Name, saveDbErr.Error())
+					Error("%v SaveDb %v.%v err %v", entity.GetId(), component.GetNameLower(), fieldCache.Name, saveDbErr.Error())
 					return true
 				}
-				logger.Info("%v -> %v.%v", cacheKey, component.GetNameLower(), fieldCache.Name)
+				Info("%v -> %v.%v", cacheKey, component.GetNameLower(), fieldCache.Name)
 				kvCache.Del(cacheKey)
-				logger.Info("RemoveCache %v", cacheKey)
+				Info("RemoveCache %v", cacheKey)
 			}
 		}
 		return true

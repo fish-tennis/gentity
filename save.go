@@ -3,8 +3,7 @@ package gentity
 import (
 	"encoding/json"
 	"errors"
-	"github.com/fish-tennis/gentity/cache"
-	"github.com/fish-tennis/gentity/logger"
+	"github.com/fish-tennis/gentity/util"
 	"google.golang.org/protobuf/proto"
 	"reflect"
 )
@@ -30,8 +29,8 @@ func SaveComponentChangedDataToCache(kvCache KvCache, component Component) {
 			val := reflectVal.Field(fieldCache.FieldIndex)
 			if val.IsNil() {
 				err := kvCache.Del(cacheKey)
-				if cache.IsRedisError(err) {
-					logger.Error("%v cache err:%v", cacheKey, err.Error())
+				if IsRedisError(err) {
+					Error("%v cache err:%v", cacheKey, err.Error())
 				}
 				continue
 			}
@@ -60,8 +59,8 @@ func SaveChangedDataToCache(kvCache KvCache, obj interface{}, cacheKeyName strin
 		val := reflectVal.Field(fieldCache.FieldIndex)
 		if val.IsNil() {
 			err := kvCache.Del(cacheKeyName)
-			if cache.IsRedisError(err) {
-				logger.Error("%v cache err:%v", cacheKeyName, err.Error())
+			if IsRedisError(err) {
+				Error("%v cache err:%v", cacheKeyName, err.Error())
 				return
 			}
 		} else {
@@ -73,25 +72,25 @@ func SaveChangedDataToCache(kvCache KvCache, obj interface{}, cacheKeyName strin
 					// proto.Message -> []byte
 					err := kvCache.SetProto(cacheKeyName, realData, 0)
 					if err != nil {
-						logger.Error("%v cache err:%v", cacheKeyName, err.Error())
+						Error("%v cache err:%v", cacheKeyName, err.Error())
 						return
 					}
 				default:
-					logger.Error("%v cache err:unsupport type:%v", cacheKeyName, reflect.TypeOf(realData))
+					Error("%v cache err:unsupport type:%v", cacheKeyName, reflect.TypeOf(realData))
 					return
 				}
 
 			case reflect.Map:
 				// map格式作为一个整体缓存时,需要先删除之前的数据
 				err := kvCache.Del(cacheKeyName)
-				if cache.IsRedisError(err) {
-					logger.Error("%v cache err:%v", cacheKeyName, err.Error())
+				if IsRedisError(err) {
+					Error("%v cache err:%v", cacheKeyName, err.Error())
 					return
 				}
 				cacheData := val.Interface()
 				err = kvCache.SetMap(cacheKeyName, cacheData)
-				if cache.IsRedisError(err) {
-					logger.Error("%v cache err:%v", cacheKeyName, err.Error())
+				if IsRedisError(err) {
+					Error("%v cache err:%v", cacheKeyName, err.Error())
 					return
 				}
 
@@ -99,22 +98,22 @@ func SaveChangedDataToCache(kvCache KvCache, obj interface{}, cacheKeyName strin
 				cacheData := val.Interface()
 				jsonBytes, err := json.Marshal(cacheData)
 				if err != nil {
-					logger.Error("%v json.Marshal err:%v", cacheKeyName, err.Error())
+					Error("%v json.Marshal err:%v", cacheKeyName, err.Error())
 					return
 				}
 				err = kvCache.Set(cacheKeyName, string(jsonBytes), 0)
-				if cache.IsRedisError(err) {
-					logger.Error("%v cache err:%v", cacheKeyName, err.Error())
+				if IsRedisError(err) {
+					Error("%v cache err:%v", cacheKeyName, err.Error())
 					return
 				}
-				logger.Debug("%v json.Marshal", cacheKeyName)
+				Debug("%v json.Marshal", cacheKeyName)
 
 			default:
-				logger.Error("%v cache err:unsupport kind:%v", cacheKeyName, val.Kind())
+				Error("%v cache err:unsupport kind:%v", cacheKeyName, val.Kind())
 			}
 		}
 		dirtyMark.ResetDirty()
-		logger.Debug("SaveCache %v", cacheKeyName)
+		Debug("SaveCache %v", cacheKeyName)
 		return
 	}
 	// map格式的
@@ -126,13 +125,13 @@ func SaveChangedDataToCache(kvCache KvCache, obj interface{}, cacheKeyName strin
 		val := reflectVal.Field(fieldCache.FieldIndex)
 		if val.IsNil() {
 			err := kvCache.Del(cacheKeyName)
-			if cache.IsRedisError(err) {
-				logger.Error("%v cache err:%v", cacheKeyName, err.Error())
+			if IsRedisError(err) {
+				Error("%v cache err:%v", cacheKeyName, err.Error())
 				return
 			}
 		} else {
 			if val.Kind() != reflect.Map {
-				logger.Error("%v unsupport kind:%v", cacheKeyName, val.Kind())
+				Error("%v unsupport kind:%v", cacheKeyName, val.Kind())
 				return
 			}
 			cacheData := val.Interface()
@@ -142,8 +141,8 @@ func SaveChangedDataToCache(kvCache KvCache, obj interface{}, cacheKeyName strin
 					return
 				}
 				err := kvCache.SetMap(cacheKeyName, cacheData)
-				if cache.IsRedisError(err) {
-					logger.Error("%v cache err:%v", cacheKeyName, err.Error())
+				if IsRedisError(err) {
+					Error("%v cache err:%v", cacheKeyName, err.Error())
 					return
 				}
 				dirtyMark.SetCached()
@@ -156,38 +155,38 @@ func SaveChangedDataToCache(kvCache KvCache, obj interface{}, cacheKeyName strin
 						if mapValue.IsValid() {
 							// use ConvertValueToInterface()?
 							if !mapValue.CanInterface() {
-								logger.Error("%v mapValue.CanInterface() false dirtyKey:%v", cacheKeyName, dirtyKey)
+								Error("%v mapValue.CanInterface() false dirtyKey:%v", cacheKeyName, dirtyKey)
 								return
 							}
 							setMap[dirtyKey] = mapValue.Interface()
 						} else {
-							logger.Debug("%v mapValue.IsValid() false dirtyKey:%v", cacheKeyName, dirtyKey)
+							Debug("%v mapValue.IsValid() false dirtyKey:%v", cacheKeyName, dirtyKey)
 						}
 					} else {
 						// delete
-						delMap = append(delMap, Itoa(dirtyKey))
+						delMap = append(delMap, util.Itoa(dirtyKey))
 					}
 				})
 				if len(setMap) > 0 {
 					// 批量更新
 					err := kvCache.SetMap(cacheKeyName, setMap)
-					if cache.IsRedisError(err) {
-						logger.Error("%v cache %v err:%v", cacheKeyName, setMap, err.Error())
+					if IsRedisError(err) {
+						Error("%v cache %v err:%v", cacheKeyName, setMap, err.Error())
 						return
 					}
 				}
 				if len(delMap) > 0 {
 					// 批量删除
 					err := kvCache.DelMapField(cacheKeyName, delMap...)
-					if cache.IsRedisError(err) {
-						logger.Error("%v cache %v err:%v", cacheKeyName, delMap, err.Error())
+					if IsRedisError(err) {
+						Error("%v cache %v err:%v", cacheKeyName, delMap, err.Error())
 						return
 					}
 				}
 			}
 		}
 		dirtyMark.ResetDirty()
-		logger.Debug("SaveCache %v", cacheKeyName)
+		Debug("SaveCache %v", cacheKeyName)
 		return
 	}
 }
@@ -206,12 +205,12 @@ func SaveEntityChangedDataToDb(entityDb EntityDb, entity Entity, kvCache KvCache
 			if saveable, ok := component.(Saveable); ok {
 				// 如果某个组件数据没改变过,就无需保存
 				if !saveable.IsChanged() {
-					logger.Debug("%v ignore %v", entity.GetId(), component.GetName())
+					Debug("%v ignore %v", entity.GetId(), component.GetName())
 					return true
 				}
 				saveData, err := GetComponentSaveData(component)
 				if err != nil {
-					logger.Error("%v Save %v err:%v", entity.GetId(), component.GetName(), err.Error())
+					Error("%v Save %v err:%v", entity.GetId(), component.GetName(), err.Error())
 					return true
 				}
 				// 使用protobuf存mongodb时,mongodb默认会把字段名转成小写,因为protobuf没设置bson tag
@@ -220,7 +219,7 @@ func SaveEntityChangedDataToDb(entityDb EntityDb, entity Entity, kvCache KvCache
 					delKeys = append(delKeys, GetEntityComponentCacheKey("p", entity.GetId(), component.GetName()))
 				}
 				saved = append(saved, saveable)
-				logger.Debug("SaveDb %v %v", entity.GetId(), component.GetName())
+				Debug("SaveDb %v %v", entity.GetId(), component.GetName())
 			}
 		} else {
 			reflectVal := reflect.ValueOf(component).Elem()
@@ -235,12 +234,12 @@ func SaveEntityChangedDataToDb(entityDb EntityDb, entity Entity, kvCache KvCache
 				if saveable, ok := fieldInterface.(Saveable); ok {
 					// 如果某个组件数据没改变过,就无需保存
 					if !saveable.IsChanged() {
-						logger.Debug("%v ignore %v.%v", entity.GetId(), component.GetName(), childName)
+						Debug("%v ignore %v.%v", entity.GetId(), component.GetName(), childName)
 						continue
 					}
 					childSaveData, err := GetSaveData(fieldInterface, childName)
 					if err != nil {
-						logger.Error("%v Save %v.%v err:%v", entity.GetId(), component.GetName(), childName, err.Error())
+						Error("%v Save %v.%v err:%v", entity.GetId(), component.GetName(), childName, err.Error())
 						continue
 					}
 					changedDatas[childName] = childSaveData
@@ -248,22 +247,22 @@ func SaveEntityChangedDataToDb(entityDb EntityDb, entity Entity, kvCache KvCache
 						delKeys = append(delKeys, GetEntityComponentChildCacheKey("p", entity.GetId(), component.GetName(), fieldCache.Name))
 					}
 					saved = append(saved, saveable)
-					logger.Debug("SaveDb %v %v.%v", entity.GetId(), component.GetName(), childName)
+					Debug("SaveDb %v %v.%v", entity.GetId(), component.GetName(), childName)
 				}
 			}
 		}
 		return true
 	})
 	if len(changedDatas) == 0 {
-		logger.Debug("ignore unchange data %v", entity.GetId())
+		Debug("ignore unchange data %v", entity.GetId())
 		return nil
 	}
 	saveDbErr := entityDb.SaveComponents(entity.GetId(), changedDatas)
 	if saveDbErr != nil {
-		logger.Error("SaveDb %v err:%v", entity.GetId(), saveDbErr)
-		logger.Error("%v", changedDatas)
+		Error("SaveDb %v err:%v", entity.GetId(), saveDbErr)
+		Error("%v", changedDatas)
 	} else {
-		logger.Debug("SaveDb %v", entity.GetId())
+		Debug("SaveDb %v", entity.GetId())
 	}
 	if saveDbErr == nil {
 		// 保存数据库成功后,重置修改标记
@@ -273,7 +272,7 @@ func SaveEntityChangedDataToDb(entityDb EntityDb, entity Entity, kvCache KvCache
 		if len(delKeys) > 0 {
 			// 保存数据库成功后,才删除缓存
 			kvCache.Del(delKeys...)
-			logger.Debug("RemoveCache %v %v", entity.GetId(), delKeys)
+			Debug("RemoveCache %v %v", entity.GetId(), delKeys)
 		}
 	}
 	return saveDbErr
@@ -288,11 +287,11 @@ func GetEntitySaveData(entity Entity, componentDatas map[string]interface{}) {
 		}
 		saveData, err := GetComponentSaveData(component)
 		if err != nil {
-			logger.Error("%v %v err:%v", entity.GetId(), component.GetName(), err.Error())
+			Error("%v %v err:%v", entity.GetId(), component.GetName(), err.Error())
 			return true
 		}
 		componentDatas[component.GetNameLower()] = saveData
-		logger.Debug("GetEntitySaveData %v %v", entity.GetId(), component.GetName())
+		Debug("GetEntitySaveData %v %v", entity.GetId(), component.GetName())
 		return true
 	})
 }
@@ -301,7 +300,7 @@ func GetEntitySaveData(entity Entity, componentDatas map[string]interface{}) {
 func GetSaveData(obj interface{}, parentName string) (interface{}, error) {
 	structCache := GetSaveableStruct(reflect.TypeOf(obj))
 	if structCache == nil {
-		logger.Debug("not saveable %v", parentName)
+		Debug("not saveable %v", parentName)
 		return nil, nil
 	}
 	reflectVal := reflect.ValueOf(obj).Elem()
@@ -335,7 +334,7 @@ func GetSaveData(obj interface{}, parentName string) (interface{}, error) {
 						if protoMessage, ok := it.Value().Interface().(proto.Message); ok {
 							bytes, err := proto.Marshal(protoMessage)
 							if err != nil {
-								logger.Error("%v.%v proto %v err:%v", parentName, fieldCache.Name, it.Key().Int(), err.Error())
+								Error("%v.%v proto %v err:%v", parentName, fieldCache.Name, it.Key().Int(), err.Error())
 								return nil, err
 							}
 							newMap[it.Key().Int()] = bytes
@@ -354,7 +353,7 @@ func GetSaveData(obj interface{}, parentName string) (interface{}, error) {
 						if protoMessage, ok := it.Value().Interface().(proto.Message); ok {
 							bytes, err := proto.Marshal(protoMessage)
 							if err != nil {
-								logger.Error("%v.%v proto %v err:%v", parentName, fieldCache.Name, it.Key().Uint(), err.Error())
+								Error("%v.%v proto %v err:%v", parentName, fieldCache.Name, it.Key().Uint(), err.Error())
 								return nil, err
 							}
 							newMap[it.Key().Uint()] = bytes
@@ -373,7 +372,7 @@ func GetSaveData(obj interface{}, parentName string) (interface{}, error) {
 						if protoMessage, ok := it.Value().Interface().(proto.Message); ok {
 							bytes, err := proto.Marshal(protoMessage)
 							if err != nil {
-								logger.Error("%v.%v proto %v err:%v", parentName, fieldCache.Name, it.Key().String(), err.Error())
+								Error("%v.%v proto %v err:%v", parentName, fieldCache.Name, it.Key().String(), err.Error())
 								return nil, err
 							}
 							newMap[it.Key().String()] = bytes
@@ -383,7 +382,7 @@ func GetSaveData(obj interface{}, parentName string) (interface{}, error) {
 					}
 					return newMap, nil
 				default:
-					logger.Error("%v.%v unsupport key type:%v", parentName, fieldCache.Name, keyType.Kind())
+					Error("%v.%v unsupport key type:%v", parentName, fieldCache.Name, keyType.Kind())
 					return nil, errors.New("unsupport key type")
 				}
 			} else {
@@ -401,7 +400,7 @@ func GetSaveData(obj interface{}, parentName string) (interface{}, error) {
 					if protoMessage, ok := sliceElem.Interface().(proto.Message); ok {
 						bytes, err := proto.Marshal(protoMessage)
 						if err != nil {
-							logger.Error("%v.%v proto %v err:%v", parentName, fieldCache.Name, i, err.Error())
+							Error("%v.%v proto %v err:%v", parentName, fieldCache.Name, i, err.Error())
 							return nil, err
 						}
 						newSlice = append(newSlice, bytes)

@@ -1,4 +1,4 @@
-package gentity
+package util
 
 func IndexString(slice []string, s string) int {
 	for idx,str := range slice {

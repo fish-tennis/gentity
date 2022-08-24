@@ -34,7 +34,11 @@ type PlayerDb interface {
 	EntityDb
 
 	// 根据账号id查找角色id
+	// 适用于一个账号在一个区服只有一个玩家角色的游戏
 	FindPlayerIdByAccountId(accountId int64, regionId int32) (int64, error)
+
+	// MMORPG类型的游戏,可能一个账号在一个服有多个角色
+	// FindPlayerIdsByAccountId(accountId int64, regionId int32) ([]int64, error)
 
 	// 根据账号id查找玩家数据
 	// 适用于一个账号在一个区服只有一个玩家角色的游戏

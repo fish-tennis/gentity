@@ -2,7 +2,6 @@ package gentity
 
 import (
 	"fmt"
-	"github.com/fish-tennis/gentity/logger"
 	"strings"
 )
 
@@ -68,7 +67,7 @@ func (this *BaseEntity) RangeComponent(fun func(component Component) bool) {
 
 func (this *BaseEntity) AddComponent(component Component, sourceData interface{}) {
 	if len(component.GetName()) == 0 {
-		logger.Error("Component Name empty")
+		Error("Component Name empty")
 	}
 	if sourceData != nil {
 		LoadData(component, sourceData)

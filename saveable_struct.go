@@ -1,7 +1,7 @@
 package gentity
 
 import (
-	"github.com/fish-tennis/gentity/logger"
+	"github.com/fish-tennis/gentity/util"
 	"reflect"
 	"strings"
 	"sync"
@@ -45,7 +45,7 @@ func (s *safeSaveableStructsMap) Set(key reflect.Type, value *SaveableStruct) {
 	defer s.l.Unlock()
 	s.m[key] = value
 	if value != nil {
-		logger.Debug("SaveableStruct: %v", key)
+		Debug("SaveableStruct: %v", key)
 	}
 }
 
@@ -90,16 +90,16 @@ func GetSaveableStruct(reflectType reflect.Type) *SaveableStruct {
 		}
 		// db字段只能有一个
 		if newStruct.Field != nil {
-			logger.Error("%v.%v db field count error", reflectType.Name(), fieldStruct.Name)
+			Error("%v.%v db field count error", reflectType.Name(), fieldStruct.Name)
 			continue
 		}
 		dbSettings := strings.Split(dbSetting, ";")
-		if HasString(dbSettings, "plain") {
+		if util.HasString(dbSettings, "plain") {
 			isPlain = true
 		}
 		// 保存db的字段必须导出
 		if ([]byte(fieldStruct.Name))[0] != ([]byte(strings.ToUpper(fieldStruct.Name)))[0] {
-			logger.Error("%v.%v field must export(start with upper char)", reflectType.Name(), fieldStruct.Name)
+			Error("%v.%v field must export(start with upper char)", reflectType.Name(), fieldStruct.Name)
 			continue
 		}
 		// 默认使用字段名的全小写
@@ -122,7 +122,7 @@ func GetSaveableStruct(reflectType reflect.Type) *SaveableStruct {
 			Name:        name,
 		}
 		newStruct.Field = fieldCache
-		logger.Debug("db %v.%v plain:%v", reflectType.Name(), name, isPlain)
+		Debug("db %v.%v plain:%v", reflectType.Name(), name, isPlain)
 	}
 	newStruct.Children = make([]*SaveableField, 0)
 	// 检查child字段
@@ -137,12 +137,12 @@ func GetSaveableStruct(reflectType reflect.Type) *SaveableStruct {
 		}
 		// db字段和child字段不共存
 		if newStruct.Field != nil {
-			logger.Error("%v already have db field,%v cant work", reflectType.Name(), fieldStruct.Name)
+			Error("%v already have db field,%v cant work", reflectType.Name(), fieldStruct.Name)
 			continue
 		}
 		// 保存db的字段必须导出
 		if ([]byte(fieldStruct.Name))[0] != ([]byte(strings.ToUpper(fieldStruct.Name)))[0] {
-			logger.Error("%v.%v field must export(start with upper char)", reflectType.Name(), fieldStruct.Name)
+			Error("%v.%v field must export(start with upper char)", reflectType.Name(), fieldStruct.Name)
 			continue
 		}
 		// 默认使用字段名的全小写
@@ -165,7 +165,7 @@ func GetSaveableStruct(reflectType reflect.Type) *SaveableStruct {
 			Name:        name,
 		}
 		newStruct.Children = append(newStruct.Children, fieldCache)
-		logger.Debug("child %v.%v", reflectType.Name(), name)
+		Debug("child %v.%v", reflectType.Name(), name)
 		GetSaveableStruct(fieldCache.StructField.Type)
 	}
 	if newStruct.Field == nil && len(newStruct.Children) == 0 {

@@ -1,10 +1,8 @@
-package db
+package gentity
 
 import (
 	"context"
 	"errors"
-	"github.com/fish-tennis/gentity"
-	"github.com/fish-tennis/gentity/logger"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
@@ -12,8 +10,8 @@ import (
 )
 
 // https://github.com/uber-go/guide/blob/master/style.md#verify-interface-compliance
-var _ gentity.PlayerDb = (*MongoCollectionPlayer)(nil)
-var _ gentity.EntityDb = (*MongoCollection)(nil)
+var _ PlayerDb = (*MongoCollectionPlayer)(nil)
+var _ EntityDb = (*MongoCollection)(nil)
 
 // db.EntityDb的mongo实现
 type MongoCollection struct {
@@ -131,7 +129,7 @@ func (this *MongoCollection) DeleteComponentField(entityId int64, componentName 
 	if updateErr != nil {
 		return updateErr
 	}
-	logger.Debug("%v", result)
+	Debug("%v", result)
 	return nil
 }
 
@@ -199,7 +197,7 @@ func (this *MongoCollectionPlayer) FindAccountIdByPlayerId(playerId int64) (int6
 	return idValue.Int64(), nil
 }
 
-var _ gentity.DbMgr = (*MongoDb)(nil)
+var _ DbMgr = (*MongoDb)(nil)
 
 // db.DbMgr的mongo实现
 type MongoDb struct {
@@ -209,19 +207,19 @@ type MongoDb struct {
 	uri    string
 	dbName string
 
-	entityDbs map[string]gentity.EntityDb
+	entityDbs map[string]EntityDb
 }
 
 func NewMongoDb(uri, dbName string) *MongoDb {
 	return &MongoDb{
 		uri:       uri,
 		dbName:    dbName,
-		entityDbs: make(map[string]gentity.EntityDb),
+		entityDbs: make(map[string]EntityDb),
 	}
 }
 
 // 注册普通Entity对应的collection
-func (this *MongoDb) RegisterEntityDb(collectionName string, uniqueId, uniqueName string) gentity.EntityDb {
+func (this *MongoDb) RegisterEntityDb(collectionName string, uniqueId, uniqueName string) EntityDb {
 	col := &MongoCollection{
 		mongoDatabase:  this.mongoDatabase,
 		collectionName: collectionName,
@@ -229,12 +227,12 @@ func (this *MongoDb) RegisterEntityDb(collectionName string, uniqueId, uniqueNam
 		uniqueName:     uniqueName,
 	}
 	this.entityDbs[collectionName] = col
-	logger.Info("RegisterEntityDb %v %v %v", collectionName, uniqueId, uniqueName)
+	Info("RegisterEntityDb %v %v %v", collectionName, uniqueId, uniqueName)
 	return col
 }
 
 // 注册玩家对应的collection
-func (this *MongoDb) RegisterPlayerPb(collectionName string, playerId, playerName, accountId, region string) gentity.PlayerDb {
+func (this *MongoDb) RegisterPlayerPb(collectionName string, playerId, playerName, accountId, region string) PlayerDb {
 	col := &MongoCollectionPlayer{
 		MongoCollection: MongoCollection{
 			mongoDatabase:  this.mongoDatabase,
@@ -246,11 +244,11 @@ func (this *MongoDb) RegisterPlayerPb(collectionName string, playerId, playerNam
 		colRegionId:  region,
 	}
 	this.entityDbs[collectionName] = col
-	logger.Info("RegisterPlayerPb %v %v %v", collectionName, playerId, playerName)
+	Info("RegisterPlayerPb %v %v %v", collectionName, playerId, playerName)
 	return col
 }
 
-func (this *MongoDb) GetEntityDb(name string) gentity.EntityDb {
+func (this *MongoDb) GetEntityDb(name string) EntityDb {
 	return this.entityDbs[name]
 }
 
@@ -261,7 +259,7 @@ func (this *MongoDb) Connect() bool {
 	}
 	// Ping the primary
 	if err := client.Ping(context.Background(), readpref.Primary()); err != nil {
-		logger.Error(err.Error())
+		Error(err.Error())
 		return false
 	}
 	this.mongoClient = client
@@ -287,9 +285,9 @@ func (this *MongoDb) Connect() bool {
 				col := this.mongoDatabase.Collection(mongoCollection.collectionName)
 				indexNames, indexErr := col.Indexes().CreateMany(context.Background(), indexModels)
 				if indexErr != nil {
-					logger.Error("%v create index %v err:%v", mongoCollection.collectionName, mongoCollection.uniqueId, indexErr)
+					Error("%v create index %v err:%v", mongoCollection.collectionName, mongoCollection.uniqueId, indexErr)
 				} else {
-					logger.Info("%v index:%v", mongoCollection.collectionName, indexNames)
+					Info("%v index:%v", mongoCollection.collectionName, indexNames)
 				}
 			}
 
@@ -312,15 +310,15 @@ func (this *MongoDb) Connect() bool {
 				col := this.mongoDatabase.Collection(mongoCollection.collectionName)
 				indexNames, indexErr := col.Indexes().CreateMany(context.Background(), indexModels)
 				if indexErr != nil {
-					logger.Error("%v create index %v err:%v", mongoCollection.collectionName, mongoCollection.uniqueId, indexErr)
+					Error("%v create index %v err:%v", mongoCollection.collectionName, mongoCollection.uniqueId, indexErr)
 				} else {
-					logger.Info("%v index:%v", mongoCollection.collectionName, indexNames)
+					Info("%v index:%v", mongoCollection.collectionName, indexNames)
 				}
 			}
 		}
 	}
 
-	logger.Info("mongo Connected")
+	Info("mongo Connected")
 	return true
 }
 
@@ -329,9 +327,9 @@ func (this *MongoDb) Disconnect() {
 		return
 	}
 	if err := this.mongoClient.Disconnect(context.Background()); err != nil {
-		logger.Error(err.Error())
+		Error(err.Error())
 	}
-	logger.Info("mongo Disconnected")
+	Info("mongo Disconnected")
 }
 
 func (this *MongoDb) GetMongoDatabase() *mongo.Database {

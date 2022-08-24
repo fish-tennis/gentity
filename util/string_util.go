@@ -1,9 +1,8 @@
-package gentity
+package util
 
 import (
 	"errors"
 	"fmt"
-	"github.com/fish-tennis/gentity/logger"
 	"strconv"
 )
 
@@ -65,6 +64,6 @@ func ToString(i interface{}) (string, error) {
 	case string:
 		return v, nil
 	}
-	logger.Error("ToString not support type:%v", i)
+	//gentity.Error("ToString not support type:%v", i)
 	return "", errors.New(fmt.Sprintf("ToString support type:%v", i))
 }

@@ -1,4 +1,4 @@
-package gentity
+package util
 
 import "reflect"
 
