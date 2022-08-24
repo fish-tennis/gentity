@@ -240,3 +240,12 @@ func convertStringToRealType(typ reflect.Type, v string) interface{} {
 	logger.Error("unsupport type:%v", typ.Kind())
 	return nil
 }
+
+// 检查redis返回的error是否是异常
+func IsRedisError(redisError error) bool {
+	// redis的key不存在,会返回redis.Nil,但是不是我们常规认为的error(异常),所以要忽略redis.Nil
+	if redisError != nil && redisError != redis.Nil {
+		return true
+	}
+	return false
+}
