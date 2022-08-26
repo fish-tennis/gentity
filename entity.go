@@ -88,6 +88,13 @@ type BaseComponent struct {
 	name string
 }
 
+func NewBaseComponent(entity Entity, name string) *BaseComponent {
+	return &BaseComponent{
+		entity: entity,
+		name: name,
+	}
+}
+
 // 组件名
 func (this *BaseComponent) GetName() string {
 	return this.name

@@ -162,7 +162,7 @@ func (this *MongoCollectionPlayer) FindPlayerByAccountId(accountId int64, region
 func (this *MongoCollectionPlayer) FindPlayerIdByAccountId(accountId int64, regionId int32) (int64, error) {
 	col := this.mongoDatabase.Collection(this.collectionName)
 	opts := options.FindOne().
-		SetProjection(bson.D{{"id", 1}})
+		SetProjection(bson.D{{this.uniqueId, 1}})
 	result := col.FindOne(context.Background(), bson.D{{this.colAccountId, accountId}, {this.colRegionId, regionId}}, opts)
 	if result == nil || result.Err() == mongo.ErrNoDocuments {
 		return 0, nil
@@ -176,6 +176,38 @@ func (this *MongoCollectionPlayer) FindPlayerIdByAccountId(accountId int64, regi
 		return 0, err
 	}
 	return idValue.Int64(), nil
+}
+
+func (this *MongoCollectionPlayer) FindPlayerIdsByAccountId(accountId int64, regionId int32) ([]int64, error) {
+	col := this.mongoDatabase.Collection(this.collectionName)
+	opts := options.Find().
+		SetProjection(bson.D{{this.uniqueId, 1}})
+	cursor,err := col.Find(context.Background(), bson.D{{this.colAccountId, accountId}, {this.colRegionId, regionId}}, opts)
+	if err != nil {
+		return nil, err
+	}
+	var datas []bson.M
+	if err = cursor.All(context.Background(), &datas); err != nil {
+		return nil, err
+	}
+	playerIds := make([]int64, len(datas), len(datas))
+	for i,data := range datas {
+		switch id := data[this.uniqueId].(type) {
+		case int64:
+			playerIds[i] = id
+		case uint64:
+			playerIds[i] = int64(id)
+		case int:
+			playerIds[i] = int64(id)
+		case uint:
+			playerIds[i] = int64(id)
+		case int32:
+			playerIds[i] = int64(id)
+		case uint32:
+			playerIds[i] = int64(id)
+		}
+	}
+	return playerIds, nil
 }
 
 func (this *MongoCollectionPlayer) FindAccountIdByPlayerId(playerId int64) (int64, error) {

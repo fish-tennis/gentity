@@ -1,0 +1,35 @@
+syntax = "proto3";
+
+option go_package = "./pb";
+
+package gserver;
+
+// 玩家基础信息
+message BaseInfo {
+  int32 gender = 1; // 性别
+  int32 level = 2; // 等级
+  int32 exp = 3; // 经验值
+}
+
+// 任务模块数据
+message QuestSaveData {
+  repeated int32 finished = 1; // 已完成的任务
+  map<int32,bytes> quests = 2; // 进行中的任务
+}
+
+// 任务数据
+message QuestData {
+  int32 cfgId = 1; // 配置id
+  int32 progress = 2; // 进度
+}
+
+// 玩家在mongo中的保存格式
+// 用于一次性把玩家数据加载进来
+message PlayerData {
+  int64 id = 1; // 玩家id
+  string name = 2; // 玩家名
+  int64 accountId = 3; // 账号id
+  int32 regionId = 4; // 区服id
+  BaseInfo baseInfo = 5;
+  QuestSaveData quest = 8;
+}
