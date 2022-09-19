@@ -4,6 +4,7 @@ import (
 	"context"
 	"github.com/fish-tennis/gentity"
 	"github.com/fish-tennis/gentity/examples/pb"
+	"github.com/fish-tennis/gnet"
 	"github.com/go-redis/redis/v8"
 	"go.mongodb.org/mongo-driver/bson"
 	"testing"
@@ -39,7 +40,7 @@ func initRedis() gentity.KvCache {
 	return gentity.NewRedisCache(redisCmdable)
 }
 
-func TestEntity(t *testing.T) {
+func TestFindPlayerId(t *testing.T) {
 	mongoDb := gentity.NewMongoDb(_mongoUri, _mongoDbName)
 	playerDb := mongoDb.RegisterPlayerPb(_collectionName, "id", "name", "accountid", "regionid")
 	if !mongoDb.Connect() {
@@ -117,4 +118,50 @@ func TestDbCache(t *testing.T) {
 	t.Logf("%v", loadPlayer.GetComponentByName("baseinfo").(*baseInfoComponent))
 	t.Logf("%v", loadPlayer.GetComponentByName("quest").(*questComponent).Finished.Finished)
 	t.Logf("%v", loadPlayer.GetComponentByName("quest").(*questComponent).Quests.Quests)
+}
+
+func TestFixDataFromCache(t *testing.T) {
+	mongoDb := gentity.NewMongoDb(_mongoUri, _mongoDbName)
+	playerDb := mongoDb.RegisterPlayerPb(_collectionName, "id", "name", "accountid", "regionid")
+	if !mongoDb.Connect() {
+		t.Fatal("connect db error")
+	}
+	defer func() {
+		mongoDb.Disconnect()
+	}()
+	kvCache := initRedis()
+
+	deletePlayer(mongoDb,1)
+	player1 := newTestPlayer(1, 1)
+	playerDb.InsertEntity(player1.Id, getNewPlayerSaveData(player1))
+
+	baseInfo := player1.GetComponentByName("baseinfo").(*baseInfoComponent)
+	baseInfo.AddExp(123)
+	player1.SaveCache(kvCache)
+
+	quest := player1.GetComponentByName("quest").(*questComponent)
+	quest.Finished.Add(1)
+	quest.Quests.Add(&pb.QuestData{
+		CfgId: 2,
+		Progress: 5,
+	})
+	player1.SaveCache(kvCache)
+
+	fixPlayer := newTestPlayer(1, 1)
+	gentity.FixEntityDataFromCache(fixPlayer, playerDb, kvCache, "p")
+
+	loadData := &pb.PlayerData{}
+	playerDb.FindEntityById(player1.Id, loadData)
+	loadPlayer := newTestPlayerFromData(loadData)
+	t.Logf("%v", loadPlayer.GetComponentByName("baseinfo").(*baseInfoComponent))
+	t.Logf("%v", loadPlayer.GetComponentByName("quest").(*questComponent).Finished.Finished)
+	t.Logf("%v", loadPlayer.GetComponentByName("quest").(*questComponent).Quests.Quests)
+}
+
+func TestHandlerRegister(t *testing.T) {
+	gnet.SetLogLevel(gnet.DebugLevel)
+	gentity.SetLogger(gnet.GetLogger())
+	tmpPlayer := newTestPlayer(0,0)
+	connectionHandler := gnet.NewDefaultConnectionHandler(nil)
+	gentity.AutoRegisterComponentHandler(tmpPlayer, connectionHandler, "On", "Handle", "gserver" )
 }

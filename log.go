@@ -14,6 +14,10 @@ func SetLogger(log Logger) {
 	logger = log
 }
 
+func GetLogger() Logger {
+	return logger
+}
+
 func Debug(format string, args ...interface{}) {
 	if logger == nil {
 		return

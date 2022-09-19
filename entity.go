@@ -82,6 +82,16 @@ func (this *BaseEntity) SaveCache(kvCache KvCache) error {
 	return nil
 }
 
+// 分发事件
+func (this *BaseEntity) FireEvent(event interface{}) {
+	this.RangeComponent(func(component Component) bool {
+		if eventReceiver, ok := component.(EventReceiver); ok {
+			eventReceiver.OnEvent(event)
+		}
+		return true
+	})
+}
+
 type BaseComponent struct {
 	entity Entity
 	// 组件名
