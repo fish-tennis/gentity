@@ -164,4 +164,7 @@ func TestHandlerRegister(t *testing.T) {
 	tmpPlayer := newTestPlayer(0,0)
 	connectionHandler := gnet.NewDefaultConnectionHandler(nil)
 	gentity.AutoRegisterComponentHandler(tmpPlayer, connectionHandler, "On", "Handle", "gserver" )
+	gentity.ProcessComponentHandler(tmpPlayer, gnet.PacketCommand(pb.CmdQuest_Cmd_FinishQuestReq), &pb.FinishQuestReq{
+		QuestCfgId: 123,
+	})
 }
