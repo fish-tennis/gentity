@@ -1,6 +1,8 @@
 # gentity
 游戏服务器中的实体对象的接口,基于gentity,游戏服务器框架可以更快的构建
 
+网络库使用[gnet](https://github.com/fish-tennis/gnet)
+
 ## Entity-Component
 Entity-Component模式是类似Unity的GameObject-Component的实体组件模式,便于组件解耦
 
@@ -59,6 +61,27 @@ type CurQuests struct {
     Quests map[int32]*pb.QuestData `db:"quests"`
 }
 ```
+
+## 消息回调
+支持自动注册消息回调
+```go
+// 客户端发给服务器的完成任务的消息回调
+// 这种格式写的函数可以自动注册客户端消息回调
+func (this *Quest) OnFinishQuestReq(reqCmd gnet.PacketCommand, req *pb.FinishQuestReq) {
+	// logic code ...
+}
+```
+```go
+// 这种格式写的函数可以自动注册非客户端的消息回调
+func (this *BaseInfo) HandlePlayerEntryGameOk(cmd gnet.PacketCommand, msg *pb.PlayerEntryGameOk) { 
+	// logic code ...
+}
+```
+
+## 独立协程实体RoutineEntity
+每个RoutineEntity分配一个独立的逻辑协程,在自己的独立协程中执行只涉及自身数据的代码,无需加锁
+
+同时,RoutineEntity内置了一个协程安全的计时器
 
 ## 项目演示
 [分布式游戏服务器框架gserver](https://github.com/fish-tennis/gserver)
