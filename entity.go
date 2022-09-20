@@ -34,8 +34,15 @@ type EventReceiver interface {
 }
 
 type BaseEntity struct {
+	// Entity唯一id
+	Id int64
 	// 组件表
 	components []Component
+}
+
+// Entity唯一id
+func (this *BaseEntity) GetId() int64 {
+	return this.Id
 }
 
 // 获取组件

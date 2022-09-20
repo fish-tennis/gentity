@@ -1,5 +1,7 @@
 package gentity
 
+import "runtime"
+
 var logger Logger
 
 type Logger interface {
@@ -46,10 +48,10 @@ func Error(format string, args ...interface{}) {
 	logger.Error(format, args...)
 }
 
-//func LogStack() {
-//	if logger == nil {
-//		return
-//	}
-//	buf := make([]byte, 1<<12)
-//	logger.Error(string(buf[:runtime.Stack(buf, false)]))
-//}
+func LogStack() {
+	if logger == nil {
+		return
+	}
+	buf := make([]byte, 1<<12)
+	logger.Error(string(buf[:runtime.Stack(buf, false)]))
+}
