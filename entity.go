@@ -74,7 +74,7 @@ func (this *BaseEntity) RangeComponent(fun func(component Component) bool) {
 
 func (this *BaseEntity) AddComponent(component Component, sourceData interface{}) {
 	if len(component.GetName()) == 0 {
-		Error("Component Name empty")
+		GetLogger().Error("Component Name empty")
 	}
 	if sourceData != nil {
 		LoadData(component, sourceData)

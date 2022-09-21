@@ -62,12 +62,12 @@ func AutoRegisterComponentHandler(entity Entity, packetHandlerRegister gnet.Pack
 			messageName := methonArg2.String()[strings.LastIndex(methonArg2.String(), ".")+1:]
 			// 客户端消息回调的函数名规则,如OnFinishQuestReq
 			if isClientMessage && method.Name != fmt.Sprintf("%v%v", clientHandlerPrefix, messageName) {
-				logger.Debug("client methodName not match:%v", method.Name)
+				GetLogger().Debug("client methodName not match:%v", method.Name)
 				continue
 			}
 			// 非客户端消息回调的函数名规则,如HandleFinishQuestReq
 			if !isClientMessage && method.Name != fmt.Sprintf("%v%v", otherHandlerPrefix, messageName) {
-				logger.Debug("methodName not match:%v", method.Name)
+				GetLogger().Debug("methodName not match:%v", method.Name)
 				continue
 			}
 			messageId := util.GetMessageIdByMessageName(protoPackageName, componentStructName, messageName)
@@ -84,7 +84,7 @@ func AutoRegisterComponentHandler(entity Entity, packetHandlerRegister gnet.Pack
 			if isClientMessage && packetHandlerRegister != nil {
 				packetHandlerRegister.Register(cmd, nil, reflect.New(methonArg2.Elem()).Interface().(proto.Message))
 			}
-			logger.Debug("AutoRegister %v.%v %v client:%v", componentStructName, method.Name, messageId, isClientMessage)
+			GetLogger().Debug("AutoRegister %v.%v %v client:%v", componentStructName, method.Name, messageId, isClientMessage)
 		}
 		return true
 	})

@@ -22,6 +22,18 @@ type RoutineEntity interface {
 	Stop()
 }
 
+// RoutineEntity协程参数
+type RoutineEntityRoutineArgs struct {
+	// 初始化,返回false时,协程不会启动
+	InitFunc func(routineEntity RoutineEntity) bool
+	// 消息处理函数
+	ProcessMessageFunc func(routineEntity RoutineEntity, message interface{})
+	// 有计时函数执行后调用
+	AfterTimerExecuteFunc func(routineEntity RoutineEntity, t time.Time)
+	// 协程结束时调用
+	EndFunc func(routineEntity RoutineEntity)
+}
+
 // 独立协程的实体
 type BaseRoutineEntity struct {
 	BaseEntity
@@ -59,22 +71,10 @@ func (this *BaseRoutineEntity) PushMessage(message interface{}) {
 	this.messages <- message
 }
 
-// RoutineEntity协程参数
-type RoutineEntityRoutineArgs struct {
-	// 初始化,返回false时,协程不会启动
-	InitFunc func(routineEntity Entity) bool
-	// 消息处理函数
-	ProcessMessageFunc func(routineEntity Entity, message interface{})
-	// 有计时函数执行后调用
-	AfterTimerExecuteFunc func(routineEntity Entity, t time.Time)
-	// 协程结束时调用
-	EndFunc func(routineEntity Entity)
-}
-
 // 开启消息处理协程
 // 每个RoutineEntity一个独立的消息处理协程
 func (this *BaseRoutineEntity) RunProcessRoutine(routineArgs *RoutineEntityRoutineArgs) bool {
-	logger.Debug("RunProcessRoutine %v", this.GetId())
+	GetLogger().Debug("RunProcessRoutine %v", this.GetId())
 	if routineArgs.InitFunc != nil {
 		if !routineArgs.InitFunc(this) {
 			return false
@@ -93,7 +93,7 @@ func (this *BaseRoutineEntity) RunProcessRoutine(routineArgs *RoutineEntityRouti
 				GetLogger().Error("recover:%v", err)
 				LogStack()
 			}
-			logger.Debug("EndProcessRoutine %v", this.GetId())
+			GetLogger().Debug("EndProcessRoutine %v", this.GetId())
 		}()
 
 		if this.timerEntries == nil {
@@ -103,10 +103,10 @@ func (this *BaseRoutineEntity) RunProcessRoutine(routineArgs *RoutineEntityRouti
 		for {
 			select {
 			case <-ctx.Done():
-				logger.Info("exitNotify %v", this.GetId())
+				GetLogger().Info("exitNotify %v", this.GetId())
 				goto END
 			case <-this.stopChan:
-				logger.Debug("stop %v", this.GetId())
+				GetLogger().Debug("stop %v", this.GetId())
 				goto END
 			case message := <-this.messages:
 				// nil消息 表示这是需要处理的最后一条消息

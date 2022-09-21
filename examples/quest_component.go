@@ -52,5 +52,5 @@ func (c *CurQuests) Remove(questId int32) {
 // 完成任务的消息回调
 // 这种格式写的函数可以自动注册客户端消息回调
 func (this *questComponent) OnFinishQuestReq(reqCmd gnet.PacketCommand, req *pb.FinishQuestReq) {
-	gentity.Debug("OnFinishQuestReq:%v", req)
+	gentity.GetLogger().Debug("OnFinishQuestReq:%v", req)
 }

@@ -129,7 +129,7 @@ func (this *MongoCollection) DeleteComponentField(entityId int64, componentName 
 	if updateErr != nil {
 		return updateErr
 	}
-	Debug("%v", result)
+	GetLogger().Debug("%v", result)
 	return nil
 }
 
@@ -259,7 +259,7 @@ func (this *MongoDb) RegisterEntityDb(collectionName string, uniqueId, uniqueNam
 		uniqueName:     uniqueName,
 	}
 	this.entityDbs[collectionName] = col
-	Info("RegisterEntityDb %v %v %v", collectionName, uniqueId, uniqueName)
+	GetLogger().Info("RegisterEntityDb %v %v %v", collectionName, uniqueId, uniqueName)
 	return col
 }
 
@@ -276,7 +276,7 @@ func (this *MongoDb) RegisterPlayerPb(collectionName string, playerId, playerNam
 		colRegionId:  region,
 	}
 	this.entityDbs[collectionName] = col
-	Info("RegisterPlayerPb %v %v %v", collectionName, playerId, playerName)
+	GetLogger().Info("RegisterPlayerPb %v %v %v", collectionName, playerId, playerName)
 	return col
 }
 
@@ -291,7 +291,7 @@ func (this *MongoDb) Connect() bool {
 	}
 	// Ping the primary
 	if err := client.Ping(context.Background(), readpref.Primary()); err != nil {
-		Error(err.Error())
+		GetLogger().Error(err.Error())
 		return false
 	}
 	this.mongoClient = client
@@ -317,9 +317,9 @@ func (this *MongoDb) Connect() bool {
 				col := this.mongoDatabase.Collection(mongoCollection.collectionName)
 				indexNames, indexErr := col.Indexes().CreateMany(context.Background(), indexModels)
 				if indexErr != nil {
-					Error("%v create index %v err:%v", mongoCollection.collectionName, mongoCollection.uniqueId, indexErr)
+					GetLogger().Error("%v create index %v err:%v", mongoCollection.collectionName, mongoCollection.uniqueId, indexErr)
 				} else {
-					Info("%v index:%v", mongoCollection.collectionName, indexNames)
+					GetLogger().Info("%v index:%v", mongoCollection.collectionName, indexNames)
 				}
 			}
 
@@ -342,15 +342,15 @@ func (this *MongoDb) Connect() bool {
 				col := this.mongoDatabase.Collection(mongoCollection.collectionName)
 				indexNames, indexErr := col.Indexes().CreateMany(context.Background(), indexModels)
 				if indexErr != nil {
-					Error("%v create index %v err:%v", mongoCollection.collectionName, mongoCollection.uniqueId, indexErr)
+					GetLogger().Error("%v create index %v err:%v", mongoCollection.collectionName, mongoCollection.uniqueId, indexErr)
 				} else {
-					Info("%v index:%v", mongoCollection.collectionName, indexNames)
+					GetLogger().Info("%v index:%v", mongoCollection.collectionName, indexNames)
 				}
 			}
 		}
 	}
 
-	Info("mongo Connected")
+	GetLogger().Info("mongo Connected")
 	return true
 }
 
@@ -359,9 +359,9 @@ func (this *MongoDb) Disconnect() {
 		return
 	}
 	if err := this.mongoClient.Disconnect(context.Background()); err != nil {
-		Error(err.Error())
+		GetLogger().Error(err.Error())
 	}
-	Info("mongo Disconnected")
+	GetLogger().Info("mongo Disconnected")
 }
 
 func (this *MongoDb) GetMongoDatabase() *mongo.Database {

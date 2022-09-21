@@ -153,12 +153,12 @@ func convertValueToString(val reflect.Value) (string, error) {
 		return val.String(), nil
 	case reflect.Interface:
 		if !val.CanInterface() {
-			Error("unsupport type:%v", val.Kind())
+			GetLogger().Error("unsupport type:%v", val.Kind())
 			return "", errors.New(fmt.Sprintf("unsupport type:%v", val.Kind()))
 		}
 		return util.ToString(val.Interface())
 	default:
-		Error("unsupport type:%v", val.Kind())
+		GetLogger().Error("unsupport type:%v", val.Kind())
 		return "", errors.New(fmt.Sprintf("unsupport type:%v", val.Kind()))
 	}
 }
@@ -173,14 +173,14 @@ func convertValueToStringOrInterface(val reflect.Value) (interface{},error) {
 	case reflect.Interface, reflect.Ptr:
 		if !val.IsNil() {
 			if !val.CanInterface() {
-				Error("unsupport type:%v", val.Kind())
+				GetLogger().Error("unsupport type:%v", val.Kind())
 				return nil,errors.New(fmt.Sprintf("unsupport type:%v", val.Kind()))
 			}
 			i := val.Interface()
 			if protoMessage, ok := i.(proto.Message); ok {
 				bytes, protoErr := proto.Marshal(protoMessage)
 				if protoErr != nil {
-					Error("proto err:%v", protoErr.Error())
+					GetLogger().Error("proto err:%v", protoErr.Error())
 					return nil, protoErr
 				}
 				return bytes,nil
@@ -188,10 +188,10 @@ func convertValueToStringOrInterface(val reflect.Value) (interface{},error) {
 			return i,nil
 		}
 	default:
-		Error("unsupport type:%v", val.Kind())
+		GetLogger().Error("unsupport type:%v", val.Kind())
 		return nil,errors.New(fmt.Sprintf("unsupport type:%v", val.Kind()))
 	}
-	Error("unsupport type:%v", val.Kind())
+	GetLogger().Error("unsupport type:%v", val.Kind())
 	return nil,errors.New(fmt.Sprintf("unsupport type:%v", val.Kind()))
 }
 
@@ -230,13 +230,13 @@ func convertStringToRealType(typ reflect.Type, v string) interface{} {
 		if protoMessage, ok := newProto.Interface().(proto.Message); ok {
 			protoErr := proto.Unmarshal([]byte(v), protoMessage)
 			if protoErr != nil {
-				Error("proto err:%v", protoErr.Error())
+				GetLogger().Error("proto err:%v", protoErr.Error())
 				return protoErr
 			}
 			return protoMessage
 		}
 	}
-	Error("unsupport type:%v", typ.Kind())
+	GetLogger().Error("unsupport type:%v", typ.Kind())
 	return nil
 }
 

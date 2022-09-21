@@ -64,7 +64,7 @@ func (this *DistributedEntityMgr) LoadEntity(entityId int64, entityData interfac
 	// 到数据库加载数据
 	exist, err := this.entityDb.FindEntityById(entityId, entityData)
 	if err != nil {
-		logger.Error("LoadEntity err:%v", err)
+		GetLogger().Error("LoadEntity err:%v", err)
 		return nil
 	}
 	if !exist {
@@ -79,7 +79,7 @@ func (this *DistributedEntityMgr) LoadEntity(entityId int64, entityData interfac
 	}
 	routineArgs := this.routineArgs
 	if !newEntity.RunProcessRoutine(&RoutineEntityRoutineArgs{
-		InitFunc: func(routineEntity Entity) bool {
+		InitFunc: func(routineEntity RoutineEntity) bool {
 			if routineArgs.InitFunc != nil && !routineArgs.InitFunc(routineEntity) {
 				return false
 			}
@@ -89,12 +89,15 @@ func (this *DistributedEntityMgr) LoadEntity(entityId int64, entityData interfac
 			}
 			return true
 		},
-		EndFunc: func(routineEntity Entity) {
+		EndFunc: func(routineEntity RoutineEntity) {
 			if routineArgs.EndFunc != nil {
 				routineArgs.EndFunc(routineEntity)
 			}
 			// 协程结束的时候,分布式锁UnLock
 			this.DistributeUnlock(routineEntity.GetId())
+			this.entityMapLock.Lock()
+			defer this.entityMapLock.Unlock()
+			delete(this.entityMap, routineEntity.GetId())
 		},
 		ProcessMessageFunc:    routineArgs.ProcessMessageFunc,
 		AfterTimerExecuteFunc: routineArgs.AfterTimerExecuteFunc,
@@ -112,34 +115,34 @@ func (this *DistributedEntityMgr) DistributeLock(entityId int64) bool {
 	// 锁的是实体id和服务器id的对应关系
 	lockOK, err := this.cache.HSetNX(context.Background(), this.distributedLockName, util.Itoa(entityId), GetServer().GetServerId()).Result()
 	if IsRedisError(err) {
-		logger.Error("%v.%v DistributeLock err:%v", this.distributedLockName, entityId, err.Error())
+		GetLogger().Error("%v.%v DistributeLock err:%v", this.distributedLockName, entityId, err.Error())
 		return false
 	}
 	if !lockOK {
-		logger.Error("%v.%v DistributeLock failed", this.distributedLockName, entityId)
+		GetLogger().Error("%v.%v DistributeLock failed", this.distributedLockName, entityId)
 		return false
 	}
-	logger.Debug("DistributeLock %v.%v", this.distributedLockName, entityId)
+	GetLogger().Debug("DistributeLock %v.%v", this.distributedLockName, entityId)
 	return true
 }
 
 // 分布式锁UnLock
 func (this *DistributedEntityMgr) DistributeUnlock(entityId int64) {
 	this.cache.HDel(context.Background(), this.distributedLockName, util.Itoa(entityId))
-	logger.Debug("DistributeUnlock %v.%v", this.distributedLockName, entityId)
+	GetLogger().Debug("DistributeUnlock %v.%v", this.distributedLockName, entityId)
 }
 
 // 删除跟本服关联的分布式锁
 func (this *DistributedEntityMgr) DeleteDistributeLocks() {
 	kv, err := this.cache.HGetAll(context.Background(), this.distributedLockName).Result()
 	if IsRedisError(err) {
-		logger.Error("DeleteDistributeLocks  %v err:%v", this.distributedLockName, err.Error())
+		GetLogger().Error("DeleteDistributeLocks  %v err:%v", this.distributedLockName, err.Error())
 		return
 	}
 	for entityIdStr, serverIdStr := range kv {
 		if util.Atoi(serverIdStr) == int(GetServer().GetServerId()) {
 			this.cache.HDel(context.Background(), this.distributedLockName, entityIdStr)
-			logger.Debug("DeleteDistributeLocks %v.%v", this.distributedLockName, entityIdStr)
+			GetLogger().Debug("DeleteDistributeLocks %v.%v", this.distributedLockName, entityIdStr)
 		}
 	}
 }
@@ -153,7 +156,7 @@ func (this *DistributedEntityMgr) ReBalance() {
 		if this.routerFunc(entity.GetId()) != GetServer().GetServerId() {
 			// 通知已不属于本服务器管理的实体关闭协程
 			entity.Stop()
-			logger.Debug("distributedEntity stop %v", entity.GetId())
+			GetLogger().Debug("distributedEntity stop %v", entity.GetId())
 		}
 	}
 }
@@ -165,6 +168,6 @@ func (this *DistributedEntityMgr) StopAll() {
 	for _, entity := range this.entityMap {
 		// 通知已不属于本服务器管理的实体关闭协程
 		entity.Stop()
-		logger.Debug("distributedEntity stop %v", entity.GetId())
+		GetLogger().Debug("distributedEntity stop %v", entity.GetId())
 	}
 }

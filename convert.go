@@ -26,7 +26,7 @@ func ConvertValueToInterface(srcType, dstType reflect.Type, v reflect.Value) int
 			return ConvertInterfaceToRealType(dstType, v.Interface())
 		}
 	}
-	Error("unsupport type:%v", srcType.Kind())
+	GetLogger().Error("unsupport type:%v", srcType.Kind())
 	return nil
 }
 
@@ -41,7 +41,7 @@ func ConvertValueToInt(srcType reflect.Type, v reflect.Value) int64 {
 		// NOTE:有精度问题
 		return int64(v.Float())
 	}
-	Error("unsupport type:%v", srcType.Kind())
+	GetLogger().Error("unsupport type:%v", srcType.Kind())
 	return 0
 }
 
@@ -86,7 +86,7 @@ func ConvertInterfaceToRealType(typ reflect.Type, v interface{}) interface{} {
 			}
 		}
 	}
-	Error("unsupport type:%v", typ.Kind())
+	GetLogger().Error("unsupport type:%v", typ.Kind())
 	return nil
 }
 
@@ -113,7 +113,7 @@ func ConvertProtoToMap(protoMessage proto.Message) map[string]interface{} {
 			v = fieldVal.Interface()
 		}
 		if v == nil {
-			Debug("%v %v nil", sf.Name, fieldVal.Kind())
+			GetLogger().Debug("%v %v nil", sf.Name, fieldVal.Kind())
 			continue
 		}
 		// 兼容mongodb,字段名小写

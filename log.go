@@ -1,57 +1,25 @@
 package gentity
 
-import "runtime"
+import (
+	"github.com/fish-tennis/gnet"
+	"runtime"
+)
 
-var logger Logger
-
-type Logger interface {
-	Debug(format string, args ...interface{})
-	Info(format string, args ...interface{})
-	Warn(format string, args ...interface{})
-	Error(format string, args ...interface{})
-}
+var _logger gnet.Logger
 
 // 设置日志接口
-func SetLogger(log Logger) {
-	logger = log
+func SetLogger(log gnet.Logger) {
+	_logger = log
 }
 
-func GetLogger() Logger {
-	return logger
-}
-
-func Debug(format string, args ...interface{}) {
-	if logger == nil {
-		return
+func GetLogger() gnet.Logger {
+	if _logger == nil {
+		return gnet.GetLogger()
 	}
-	logger.Debug(format, args...)
-}
-
-func Info(format string, args ...interface{}) {
-	if logger == nil {
-		return
-	}
-	logger.Info(format, args...)
-}
-
-func Warn(format string, args ...interface{}) {
-	if logger == nil {
-		return
-	}
-	logger.Warn(format, args...)
-}
-
-func Error(format string, args ...interface{}) {
-	if logger == nil {
-		return
-	}
-	logger.Error(format, args...)
+	return _logger
 }
 
 func LogStack() {
-	if logger == nil {
-		return
-	}
 	buf := make([]byte, 1<<12)
-	logger.Error(string(buf[:runtime.Stack(buf, false)]))
+	GetLogger().Error(string(buf[:runtime.Stack(buf, false)]))
 }
