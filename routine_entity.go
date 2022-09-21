@@ -6,8 +6,24 @@ import (
 	"time"
 )
 
+// 独立协程的实体接口
+type RoutineEntity interface {
+	Entity
+
+	// push a message
+	// 将会在RoutineEntity的独立协程中被调用
+	PushMessage(message interface{})
+
+	// 开启消息处理协程
+	// 每个RoutineEntity一个独立的消息处理协程
+	RunProcessRoutine(routineArgs *RoutineEntityRoutineArgs) bool
+
+	// 停止协程
+	Stop()
+}
+
 // 独立协程的实体
-type RoutineEntity struct {
+type BaseRoutineEntity struct {
 	BaseEntity
 	// 消息队列
 	messages chan interface{}
@@ -17,20 +33,20 @@ type RoutineEntity struct {
 	timerEntries *TimerEntries
 }
 
-func NewRoutineEntity(messageChanLen int) *RoutineEntity {
-	return &RoutineEntity{
+func NewRoutineEntity(messageChanLen int) *BaseRoutineEntity {
+	return &BaseRoutineEntity{
 		messages: make(chan interface{}, messageChanLen),
 		stopChan: make(chan struct{}, 1),
 		timerEntries: NewTimerEntries(),
 	}
 }
 
-func (this *RoutineEntity) GetTimerEntries() *TimerEntries {
+func (this *BaseRoutineEntity) GetTimerEntries() *TimerEntries {
 	return this.timerEntries
 }
 
 // 停止协程
-func (this *RoutineEntity) Stop() {
+func (this *BaseRoutineEntity) Stop() {
 	this.stopOnce.Do(func() {
 		this.stopChan <- struct{}{}
 	})
@@ -38,7 +54,7 @@ func (this *RoutineEntity) Stop() {
 
 // push a message
 // 将会在RoutineEntity的独立协程中被调用
-func (this *RoutineEntity) PushMessage(message interface{}) {
+func (this *BaseRoutineEntity) PushMessage(message interface{}) {
 	GetLogger().Debug("PushMessage %v", message)
 	this.messages <- message
 }
@@ -57,7 +73,7 @@ type RoutineEntityRoutineArgs struct {
 
 // 开启消息处理协程
 // 每个RoutineEntity一个独立的消息处理协程
-func (this *RoutineEntity) RunProcessRoutine(routineArgs *RoutineEntityRoutineArgs) bool {
+func (this *BaseRoutineEntity) RunProcessRoutine(routineArgs *RoutineEntityRoutineArgs) bool {
 	logger.Debug("RunProcessRoutine %v", this.GetId())
 	if routineArgs.InitFunc != nil {
 		if !routineArgs.InitFunc(this) {
