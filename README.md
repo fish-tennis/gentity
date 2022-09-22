@@ -83,8 +83,15 @@ func (this *BaseInfo) HandlePlayerEntryGameOk(cmd gnet.PacketCommand, msg *pb.Pl
 
 同时,RoutineEntity内置了一个协程安全的计时器
 
+示例:[gserver](https://github.com/fish-tennis/gserver) 里的玩家对象Player
+
+## 分布式实体DistributedEntity
+分布式实体DistributedEntity在RoutineEntity的基础上增加了数据库加载接口,分布式锁接口,消息路由接口
+
+示例:[gserver](https://github.com/fish-tennis/gserver) 里的公会对象Guild
+
 ## 项目演示
-[分布式游戏服务器框架gserver](https://github.com/fish-tennis/gserver)
+分布式游戏服务器框架[gserver](https://github.com/fish-tennis/gserver)
 
 ## 讨论
 QQ群: 764912827

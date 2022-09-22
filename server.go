@@ -11,6 +11,7 @@ var (
 )
 
 // 服务器接口
+// TODO: rename to Application
 type Server interface {
 
 	// 服务器进程的唯一id
