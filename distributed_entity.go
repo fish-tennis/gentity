@@ -150,7 +150,7 @@ func (this *DistributedEntityMgr) LoadEntity(entityId int64, entityData interfac
 func (this *DistributedEntityMgr) DistributeLock(entityId int64) bool {
 	// redis实现的分布式锁,保证同一个实体的逻辑处理协程只会在一个服务器上
 	// 锁的是实体id和服务器id的对应关系
-	lockOK, err := this.cache.HSetNX(context.Background(), this.distributedLockName, util.Itoa(entityId), GetServer().GetServerId()).Result()
+	lockOK, err := this.cache.HSetNX(context.Background(), this.distributedLockName, util.Itoa(entityId), GetApplication().GetId()).Result()
 	if IsRedisError(err) {
 		GetLogger().Error("%v.%v DistributeLock err:%v", this.distributedLockName, entityId, err.Error())
 		return false
@@ -177,7 +177,7 @@ func (this *DistributedEntityMgr) DeleteDistributeLocks() {
 		return
 	}
 	for entityIdStr, serverIdStr := range kv {
-		if util.Atoi(serverIdStr) == int(GetServer().GetServerId()) {
+		if util.Atoi(serverIdStr) == int(GetApplication().GetId()) {
 			this.cache.HDel(context.Background(), this.distributedLockName, entityIdStr)
 			GetLogger().Debug("DeleteDistributeLocks %v.%v", this.distributedLockName, entityIdStr)
 		}
@@ -190,7 +190,7 @@ func (this *DistributedEntityMgr) ReBalance() {
 	this.entityMapLock.RLock()
 	defer this.entityMapLock.RUnlock()
 	for _, entity := range this.entityMap {
-		if this.routerFunc(entity.GetId()) != GetServer().GetServerId() {
+		if this.routerFunc(entity.GetId()) != GetApplication().GetId() {
 			// 通知已不属于本服务器管理的实体关闭协程
 			entity.Stop()
 			GetLogger().Debug("distributedEntity stop %v", entity.GetId())
@@ -228,7 +228,7 @@ func (this *DistributedEntityMgr) RoutePacket(from Entity, toEntityId int64, pac
 		return false
 	}
 	// 目标实体在本服务器上
-	if routeServerId == GetServer().GetServerId() {
+	if routeServerId == GetApplication().GetId() {
 		toEntity := this.GetEntity(toEntityId)
 		if toEntity == nil {
 			entityData := this.entityDataCreator(toEntityId)
@@ -249,7 +249,7 @@ func (this *DistributedEntityMgr) RoutePacket(from Entity, toEntityId int64, pac
 
 func (this *DistributedEntityMgr) ParseRoutePacket(toEntityId int64, packet gnet.Packet) {
 	// 再验证一次是否属于本服务器管理
-	if this.routerFunc(toEntityId) != GetServer().GetServerId() {
+	if this.routerFunc(toEntityId) != GetApplication().GetId() {
 		GetLogger().Debug("route err entityId:%v %v", toEntityId, packet)
 		return
 	}

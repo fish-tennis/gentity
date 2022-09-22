@@ -80,7 +80,7 @@ func (this *BaseRoutineEntity) RunProcessRoutine(routineEntity RoutineEntity, ro
 			return false
 		}
 	}
-	GetServer().GetWaitGroup().Add(1)
+	GetApplication().GetWaitGroup().Add(1)
 	go func(ctx context.Context) {
 		defer func() {
 			this.timerEntries.Stop()
@@ -88,7 +88,7 @@ func (this *BaseRoutineEntity) RunProcessRoutine(routineEntity RoutineEntity, ro
 			if routineArgs.EndFunc != nil {
 				routineArgs.EndFunc(routineEntity)
 			}
-			GetServer().GetWaitGroup().Done()
+			GetApplication().GetWaitGroup().Done()
 			if err := recover(); err != nil {
 				GetLogger().Error("recover:%v", err)
 				LogStack()
@@ -139,6 +139,6 @@ func (this *BaseRoutineEntity) RunProcessRoutine(routineEntity RoutineEntity, ro
 				routineArgs.ProcessMessageFunc(routineEntity, message)
 			}
 		}
-	}(GetServer().GetContext())
+	}(GetApplication().GetContext())
 	return true
 }
