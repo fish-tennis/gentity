@@ -16,7 +16,7 @@ type RoutineEntity interface {
 
 	// 开启消息处理协程
 	// 每个RoutineEntity一个独立的消息处理协程
-	RunProcessRoutine(routineArgs *RoutineEntityRoutineArgs) bool
+	RunProcessRoutine(routineEntity RoutineEntity, routineArgs *RoutineEntityRoutineArgs) bool
 
 	// 停止协程
 	Stop()
@@ -73,10 +73,10 @@ func (this *BaseRoutineEntity) PushMessage(message interface{}) {
 
 // 开启消息处理协程
 // 每个RoutineEntity一个独立的消息处理协程
-func (this *BaseRoutineEntity) RunProcessRoutine(routineArgs *RoutineEntityRoutineArgs) bool {
+func (this *BaseRoutineEntity) RunProcessRoutine(routineEntity RoutineEntity, routineArgs *RoutineEntityRoutineArgs) bool {
 	GetLogger().Debug("RunProcessRoutine %v", this.GetId())
 	if routineArgs.InitFunc != nil {
-		if !routineArgs.InitFunc(this) {
+		if !routineArgs.InitFunc(routineEntity) {
 			return false
 		}
 	}
@@ -86,7 +86,7 @@ func (this *BaseRoutineEntity) RunProcessRoutine(routineArgs *RoutineEntityRouti
 			this.timerEntries.Stop()
 			// 协程结束的时候,清理接口
 			if routineArgs.EndFunc != nil {
-				routineArgs.EndFunc(this)
+				routineArgs.EndFunc(routineEntity)
 			}
 			GetServer().GetWaitGroup().Done()
 			if err := recover(); err != nil {
@@ -114,13 +114,13 @@ func (this *BaseRoutineEntity) RunProcessRoutine(routineArgs *RoutineEntityRouti
 					return
 				}
 				if routineArgs.ProcessMessageFunc != nil {
-					routineArgs.ProcessMessageFunc(this, message)
+					routineArgs.ProcessMessageFunc(routineEntity, message)
 				}
 			case timeNow := <-this.timerEntries.TimerChan():
 				// 计时器的回调在RoutineEntity协程里执行,所以是协程安全的
 				if this.timerEntries.Run(timeNow) {
 					if routineArgs.AfterTimerExecuteFunc != nil {
-						routineArgs.AfterTimerExecuteFunc(this, timeNow)
+						routineArgs.AfterTimerExecuteFunc(routineEntity, timeNow)
 					}
 				}
 			}
@@ -136,7 +136,7 @@ func (this *BaseRoutineEntity) RunProcessRoutine(routineArgs *RoutineEntityRouti
 				return
 			}
 			if routineArgs.ProcessMessageFunc != nil {
-				routineArgs.ProcessMessageFunc(this, message)
+				routineArgs.ProcessMessageFunc(routineEntity, message)
 			}
 		}
 	}(GetServer().GetContext())

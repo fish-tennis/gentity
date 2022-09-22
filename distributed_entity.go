@@ -78,7 +78,7 @@ func (this *DistributedEntityMgr) LoadEntity(entityId int64, entityData interfac
 		return existGuild
 	}
 	routineArgs := this.routineArgs
-	if !newEntity.RunProcessRoutine(&RoutineEntityRoutineArgs{
+	if !newEntity.RunProcessRoutine(newEntity, &RoutineEntityRoutineArgs{
 		InitFunc: func(routineEntity RoutineEntity) bool {
 			if routineArgs.InitFunc != nil && !routineArgs.InitFunc(routineEntity) {
 				return false
@@ -169,5 +169,16 @@ func (this *DistributedEntityMgr) StopAll() {
 		// 通知已不属于本服务器管理的实体关闭协程
 		entity.Stop()
 		GetLogger().Debug("distributedEntity stop %v", entity.GetId())
+	}
+}
+
+// 遍历
+func (this *DistributedEntityMgr) Range(f func(entity RoutineEntity) bool) {
+	this.entityMapLock.RLock()
+	defer this.entityMapLock.RUnlock()
+	for _, entity := range this.entityMap {
+		if !f(entity) {
+			return
+		}
 	}
 }
