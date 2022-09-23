@@ -21,8 +21,10 @@ type DistributedEntityMgr struct {
 	// 分布式锁key
 	distributedLockName string
 	// 已加载实体
-	entityMap           map[int64]RoutineEntity
-	entityMapLock       sync.RWMutex
+	entityMap     map[int64]RoutineEntity
+	entityMapLock sync.RWMutex
+	// GetEntity()==nil时,去加载实体数据
+	loadEntityWhenGetNil bool
 	// 数据库接口
 	entityDb EntityDb
 	// 缓存接口
@@ -34,15 +36,15 @@ type DistributedEntityMgr struct {
 
 	// 根据entityId路由到目标服务器
 	// 返回值:服务器id
-	routerFunc                   func(entityId int64) int32
+	routerFunc func(entityId int64) int32
 	// 实体结构接口
-	entityDataCreator            func(entityId int64) interface{}
+	entityDataCreator func(entityId int64) interface{}
 	// 根据数据创建实体接口
-	entityCreator                func(entityData interface{}) RoutineEntity
+	entityCreator func(entityData interface{}) RoutineEntity
 	// 消息转换成RoutineEntity的逻辑消息
-	packetToRoutineMessage       func(from Entity, packet gnet.Packet, to RoutineEntity) interface{}
+	packetToRoutineMessage func(from Entity, packet gnet.Packet, to RoutineEntity) interface{}
 	// 消息转换成路由消息
-	packetToRemotePacket         func(from Entity, packet gnet.Packet, toEntityId int64) gnet.Packet
+	packetToRemotePacket func(from Entity, packet gnet.Packet, toEntityId int64) gnet.Packet
 	// 路由消息转换成RoutineEntity的逻辑消息
 	remotePacketToRoutineMessage func(packet gnet.Packet, toEntityId int64) interface{}
 }
@@ -60,6 +62,11 @@ func NewDistributedEntityMgr(distributedLockName string,
 		serverList:          serverList,
 		routineArgs:         routineArgs,
 	}
+}
+
+// GetEntity()==nil时,去加载实体数据
+func (this *DistributedEntityMgr) SetLoadEntityWhenGetNil(loadEntityWhenGetNil bool) {
+	this.loadEntityWhenGetNil = loadEntityWhenGetNil
 }
 
 // 设置路由接口
@@ -97,18 +104,23 @@ func (this *DistributedEntityMgr) GetEntity(entityId int64) RoutineEntity {
 }
 
 // 加载分布式实体
-func (this *DistributedEntityMgr) LoadEntity(entityId int64, entityData interface{}, creator func(entityData interface{}) RoutineEntity) RoutineEntity {
+// 加载成功后,开启独立协程
+func (this *DistributedEntityMgr) LoadEntity(entityId int64, entityData interface{}) RoutineEntity {
 	// 到数据库加载数据
 	exist, err := this.entityDb.FindEntityById(entityId, entityData)
 	if err != nil {
-		GetLogger().Error("LoadEntity err:%v", err)
+		GetLogger().Debug("LoadEntity err:%v entityId:%v", err, entityId)
 		return nil
 	}
 	if !exist {
 		return nil
 	}
 	// 加载的数据生成实体对象
-	newEntity := creator(entityData)
+	newEntity := this.entityCreator(entityData)
+	if newEntity == nil {
+		GetLogger().Debug("LoadEntity newEntity==nil entityId:%v", entityId)
+		return nil
+	}
 	this.entityMapLock.Lock()
 	defer this.entityMapLock.Unlock()
 	if existGuild, ok := this.entityMap[entityId]; ok {
@@ -141,6 +153,7 @@ func (this *DistributedEntityMgr) LoadEntity(entityId int64, entityData interfac
 	}) {
 		return nil
 	}
+	// 协程开启成功 才加入map
 	this.entityMap[entityId] = newEntity
 	return newEntity
 }
@@ -221,6 +234,8 @@ func (this *DistributedEntityMgr) Range(f func(entity RoutineEntity) bool) {
 }
 
 // 路由消息
+// 如果目标实体在本服务器上,则调用RoutineEntity.PushMessage
+// 如果目标实体不在本服务器上,则根据路由规则查找其所在服务器,并封装路由消息发给目标服务器
 func (this *DistributedEntityMgr) RoutePacket(from Entity, toEntityId int64, packet gnet.Packet) bool {
 	routeServerId := this.routerFunc(toEntityId)
 	if routeServerId == 0 {
@@ -231,8 +246,10 @@ func (this *DistributedEntityMgr) RoutePacket(from Entity, toEntityId int64, pac
 	if routeServerId == GetApplication().GetId() {
 		toEntity := this.GetEntity(toEntityId)
 		if toEntity == nil {
-			entityData := this.entityDataCreator(toEntityId)
-			toEntity = this.LoadEntity(toEntityId, entityData, this.entityCreator)
+			if this.loadEntityWhenGetNil {
+				entityData := this.entityDataCreator(toEntityId)
+				toEntity = this.LoadEntity(toEntityId, entityData)
+			}
 			if toEntity == nil {
 				GetLogger().Debug("RoutePacket entity==nil entityId:%v %v", toEntityId, packet)
 				return false
@@ -241,12 +258,14 @@ func (this *DistributedEntityMgr) RoutePacket(from Entity, toEntityId int64, pac
 		toEntity.PushMessage(this.packetToRoutineMessage(from, packet, toEntity))
 	} else {
 		routePacket := this.packetToRemotePacket(from, packet, toEntityId)
-		this.serverList.SendToServer(routeServerId, routePacket.Command(), routePacket.Message())
+		this.serverList.Send(routeServerId, routePacket.Command(), routePacket.Message())
 		GetLogger().Debug("RoutePacket routeServerId:%v entityId:%v %v", routeServerId, toEntityId, packet)
 	}
 	return false
 }
 
+// 处理另一个服务器转发过来的路由消息
+// 解析出实际的消息,放入目标实体的消息队列中
 func (this *DistributedEntityMgr) ParseRoutePacket(toEntityId int64, packet gnet.Packet) {
 	// 再验证一次是否属于本服务器管理
 	if this.routerFunc(toEntityId) != GetApplication().GetId() {
@@ -255,8 +274,10 @@ func (this *DistributedEntityMgr) ParseRoutePacket(toEntityId int64, packet gnet
 	}
 	toEntity := this.GetEntity(toEntityId)
 	if toEntity == nil {
-		entityData := this.entityDataCreator(toEntityId)
-		toEntity = this.LoadEntity(toEntityId, entityData, this.entityCreator)
+		if this.loadEntityWhenGetNil {
+			entityData := this.entityDataCreator(toEntityId)
+			toEntity = this.LoadEntity(toEntityId, entityData)
+		}
 		if toEntity == nil {
 			GetLogger().Debug("OnRecvRoutePacket entity==nil entityId:%v %v", toEntityId, packet)
 			return

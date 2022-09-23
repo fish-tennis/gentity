@@ -90,6 +90,9 @@ func (this *BaseInfo) HandlePlayerEntryGameOk(cmd gnet.PacketCommand, msg *pb.Pl
 
 示例:[gserver](https://github.com/fish-tennis/gserver) 里的公会对象Guild
 
+## 服务器自动组网
+服务器注册,发现,组网
+
 ## 项目演示
 分布式游戏服务器框架[gserver](https://github.com/fish-tennis/gserver)
 
