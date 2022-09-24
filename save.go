@@ -28,7 +28,7 @@ func SaveComponentChangedDataToCache(kvCache KvCache, component Component) {
 			cacheKey := GetPlayerComponentChildCacheKey(component.GetEntity().GetId(), component.GetName(), fieldCache.Name)
 			val := reflectVal.Field(fieldCache.FieldIndex)
 			if val.IsNil() {
-				err := kvCache.Del(cacheKey)
+				_, err := kvCache.Del(cacheKey)
 				if IsRedisError(err) {
 					GetLogger().Error("%v cache err:%v", cacheKey, err.Error())
 				}
@@ -58,7 +58,7 @@ func SaveChangedDataToCache(kvCache KvCache, obj interface{}, cacheKeyName strin
 		reflectVal := reflect.ValueOf(obj).Elem()
 		val := reflectVal.Field(fieldCache.FieldIndex)
 		if val.IsNil() {
-			err := kvCache.Del(cacheKeyName)
+			_, err := kvCache.Del(cacheKeyName)
 			if IsRedisError(err) {
 				GetLogger().Error("%v cache err:%v", cacheKeyName, err.Error())
 				return
@@ -70,7 +70,7 @@ func SaveChangedDataToCache(kvCache KvCache, obj interface{}, cacheKeyName strin
 				switch realData := cacheData.(type) {
 				case proto.Message:
 					// proto.Message -> []byte
-					err := kvCache.SetProto(cacheKeyName, realData, 0)
+					err := kvCache.Set(cacheKeyName, realData, 0)
 					if err != nil {
 						GetLogger().Error("%v cache err:%v", cacheKeyName, err.Error())
 						return
@@ -82,7 +82,7 @@ func SaveChangedDataToCache(kvCache KvCache, obj interface{}, cacheKeyName strin
 
 			case reflect.Map:
 				// map格式作为一个整体缓存时,需要先删除之前的数据
-				err := kvCache.Del(cacheKeyName)
+				_, err := kvCache.Del(cacheKeyName)
 				if IsRedisError(err) {
 					GetLogger().Error("%v cache err:%v", cacheKeyName, err.Error())
 					return
@@ -124,7 +124,7 @@ func SaveChangedDataToCache(kvCache KvCache, obj interface{}, cacheKeyName strin
 		reflectVal := reflect.ValueOf(obj).Elem()
 		val := reflectVal.Field(fieldCache.FieldIndex)
 		if val.IsNil() {
-			err := kvCache.Del(cacheKeyName)
+			_, err := kvCache.Del(cacheKeyName)
 			if IsRedisError(err) {
 				GetLogger().Error("%v cache err:%v", cacheKeyName, err.Error())
 				return
@@ -177,7 +177,7 @@ func SaveChangedDataToCache(kvCache KvCache, obj interface{}, cacheKeyName strin
 				}
 				if len(delMap) > 0 {
 					// 批量删除
-					err := kvCache.DelMapField(cacheKeyName, delMap...)
+					_, err := kvCache.HDel(cacheKeyName, delMap...)
 					if IsRedisError(err) {
 						GetLogger().Error("%v cache %v err:%v", cacheKeyName, delMap, err.Error())
 						return

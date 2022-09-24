@@ -1,10 +1,8 @@
 package gentity
 
 import (
-	"context"
 	"github.com/fish-tennis/gentity/util"
 	"github.com/fish-tennis/gnet"
-	"github.com/go-redis/redis/v8"
 	"sync"
 )
 
@@ -28,7 +26,7 @@ type DistributedEntityMgr struct {
 	// 数据库接口
 	entityDb EntityDb
 	// 缓存接口
-	cache redis.Cmdable
+	cache KvCache
 	// 服务器列表接口
 	serverList ServerList
 	// 协程回调接口
@@ -51,7 +49,7 @@ type DistributedEntityMgr struct {
 
 func NewDistributedEntityMgr(distributedLockName string,
 	entityDb EntityDb,
-	cache redis.Cmdable,
+	cache KvCache,
 	serverList ServerList,
 	routineArgs *RoutineEntityRoutineArgs) *DistributedEntityMgr {
 	return &DistributedEntityMgr{
@@ -163,7 +161,7 @@ func (this *DistributedEntityMgr) LoadEntity(entityId int64, entityData interfac
 func (this *DistributedEntityMgr) DistributeLock(entityId int64) bool {
 	// redis实现的分布式锁,保证同一个实体的逻辑处理协程只会在一个服务器上
 	// 锁的是实体id和服务器id的对应关系
-	lockOK, err := this.cache.HSetNX(context.Background(), this.distributedLockName, util.Itoa(entityId), GetApplication().GetId()).Result()
+	lockOK, err := this.cache.HSetNX(this.distributedLockName, util.Itoa(entityId), GetApplication().GetId())
 	if IsRedisError(err) {
 		GetLogger().Error("%v.%v DistributeLock err:%v", this.distributedLockName, entityId, err.Error())
 		return false
@@ -178,20 +176,20 @@ func (this *DistributedEntityMgr) DistributeLock(entityId int64) bool {
 
 // 分布式锁UnLock
 func (this *DistributedEntityMgr) DistributeUnlock(entityId int64) {
-	this.cache.HDel(context.Background(), this.distributedLockName, util.Itoa(entityId))
+	this.cache.HDel(this.distributedLockName, util.Itoa(entityId))
 	GetLogger().Debug("DistributeUnlock %v.%v", this.distributedLockName, entityId)
 }
 
 // 删除跟本服关联的分布式锁
 func (this *DistributedEntityMgr) DeleteDistributeLocks() {
-	kv, err := this.cache.HGetAll(context.Background(), this.distributedLockName).Result()
+	kv, err := this.cache.HGetAll(this.distributedLockName)
 	if IsRedisError(err) {
 		GetLogger().Error("DeleteDistributeLocks  %v err:%v", this.distributedLockName, err.Error())
 		return
 	}
 	for entityIdStr, serverIdStr := range kv {
 		if util.Atoi(serverIdStr) == int(GetApplication().GetId()) {
-			this.cache.HDel(context.Background(), this.distributedLockName, entityIdStr)
+			this.cache.HDel(this.distributedLockName, entityIdStr)
 			GetLogger().Debug("DeleteDistributeLocks %v.%v", this.distributedLockName, entityIdStr)
 		}
 	}

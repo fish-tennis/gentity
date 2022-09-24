@@ -180,7 +180,7 @@ func (this *BaseServerList) ConnectServer(ctx context.Context, info ServerInfo) 
 // 服务注册:上传本地服务器的信息
 func (this *BaseServerList) RegisterLocalServerInfo() {
 	bytes := this.serverInfoMarshal(this.localServerInfo)
-	this.cache.SetMapField(fmt.Sprintf("servers:%v", this.localServerInfo.GetServerType()),
+	this.cache.HSet(fmt.Sprintf("servers:%v", this.localServerInfo.GetServerType()),
 		util.Itoa(this.localServerInfo.GetServerId()), bytes)
 }
 
