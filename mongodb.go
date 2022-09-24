@@ -182,7 +182,7 @@ func (this *MongoCollectionPlayer) FindPlayerIdsByAccountId(accountId int64, reg
 	col := this.mongoDatabase.Collection(this.collectionName)
 	opts := options.Find().
 		SetProjection(bson.D{{this.uniqueId, 1}})
-	cursor,err := col.Find(context.Background(), bson.D{{this.colAccountId, accountId}, {this.colRegionId, regionId}}, opts)
+	cursor, err := col.Find(context.Background(), bson.D{{this.colAccountId, accountId}, {this.colRegionId, regionId}}, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -191,7 +191,7 @@ func (this *MongoCollectionPlayer) FindPlayerIdsByAccountId(accountId int64, reg
 		return nil, err
 	}
 	playerIds := make([]int64, len(datas), len(datas))
-	for i,data := range datas {
+	for i, data := range datas {
 		switch id := data[this.uniqueId].(type) {
 		case int64:
 			playerIds[i] = id
@@ -240,6 +240,7 @@ type MongoDb struct {
 	dbName string
 
 	entityDbs map[string]EntityDb
+	kvDbs     map[string]KvDb
 }
 
 func NewMongoDb(uri, dbName string) *MongoDb {
@@ -247,6 +248,7 @@ func NewMongoDb(uri, dbName string) *MongoDb {
 		uri:       uri,
 		dbName:    dbName,
 		entityDbs: make(map[string]EntityDb),
+		kvDbs:     make(map[string]KvDb),
 	}
 }
 
@@ -264,7 +266,7 @@ func (this *MongoDb) RegisterEntityDb(collectionName string, uniqueId, uniqueNam
 }
 
 // 注册玩家对应的collection
-func (this *MongoDb) RegisterPlayerPb(collectionName string, playerId, playerName, accountId, region string) PlayerDb {
+func (this *MongoDb) RegisterPlayerDb(collectionName string, playerId, playerName, accountId, region string) PlayerDb {
 	col := &MongoCollectionPlayer{
 		MongoCollection: MongoCollection{
 			mongoDatabase:  this.mongoDatabase,
@@ -276,12 +278,28 @@ func (this *MongoDb) RegisterPlayerPb(collectionName string, playerId, playerNam
 		colRegionId:  region,
 	}
 	this.entityDbs[collectionName] = col
-	GetLogger().Info("RegisterPlayerPb %v %v %v", collectionName, playerId, playerName)
+	GetLogger().Info("RegisterPlayerDb %v %v %v", collectionName, playerId, playerName)
+	return col
+}
+
+func (this *MongoDb) RegisterKvDb(collectionName, keyName, valueName string) KvDb {
+	col := &MongoKvDb{
+		mongoDatabase:  this.mongoDatabase,
+		collectionName: collectionName,
+		keyName:        keyName,
+		valueName:      valueName,
+	}
+	this.kvDbs[collectionName] = col
+	GetLogger().Info("RegisterKvDb %v %v %v", collectionName, keyName, valueName)
 	return col
 }
 
 func (this *MongoDb) GetEntityDb(name string) EntityDb {
 	return this.entityDbs[name]
+}
+
+func (this *MongoDb) GetKvDb(name string) KvDb {
+	return this.kvDbs[name]
 }
 
 func (this *MongoDb) Connect() bool {
@@ -346,6 +364,25 @@ func (this *MongoDb) Connect() bool {
 				} else {
 					GetLogger().Info("%v index:%v", mongoCollection.collectionName, indexNames)
 				}
+			}
+		}
+	}
+
+	for _, kvDb := range this.kvDbs {
+		switch mongoCollection := kvDb.(type) {
+		case *MongoKvDb:
+			mongoCollection.mongoDatabase = this.mongoDatabase
+			indexName,indexErr := this.mongoDatabase.Collection(mongoCollection.collectionName).Indexes().CreateOne(context.Background(),
+				mongo.IndexModel{
+					Keys: bson.D{
+						{mongoCollection.keyName, 1},
+					},
+					Options: options.Index().SetUnique(true),
+				})
+			if indexErr != nil {
+				GetLogger().Error("%v create index %v err:%v", mongoCollection.collectionName, mongoCollection.keyName, indexErr)
+			} else {
+				GetLogger().Info("%v index:%v", mongoCollection.collectionName, indexName)
 			}
 		}
 	}

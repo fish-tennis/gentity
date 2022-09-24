@@ -52,34 +52,19 @@ type PlayerDb interface {
 // 游戏应用里,除了账号数据和玩家数据之外,其他以Key-Value存储的数据
 // KvDb接口是为了应用层能够灵活的更换存储数据库(mysql,mongo,redis等)
 type KvDb interface {
-	// 加载数据(find by string key)
-	FindString(key string, data interface{}) (bool, error)
+	Find(key interface{}, value interface{}) (bool, error)
 
-	// 新建数据(insert by string key)
-	InsertString(key string, data interface{}) error
+	Insert(key interface{}, value interface{}) (err error, isDuplicateKey bool)
 
-	// 保存数据(update by string key)
-	UpdateString(key string, data interface{}) error
+	Update(key interface{}, value interface{}, upsert bool) error
 
-	// 加载数据(find by int key)
-	FindInt64(key int64, data interface{}) (bool, error)
+	Inc(key interface{}, value interface{}, upsert bool) (interface{}, error)
 
-	// 新建数据(insert by int key)
-	InsertInt64(key int64, data interface{}) error
-
-	// 保存数据(update by int key)
-	UpdateInt64(key int64, data interface{}) error
-
-	// 加载数据(find by int key.fieldName)
-	LoadFieldInt64(key int64, fieldName string, fieldData interface{}) (bool, error)
-
-	// 保存字段(upsert by int key.fieldName)
-	SaveFieldInt64(key int64, fieldName string, fieldData interface{}) error
-
-	// TODO:需要一个有容量限制的列表接口
+	Delete(key interface{}) error
 }
 
 // 数据表管理接口
 type DbMgr interface {
 	GetEntityDb(name string) EntityDb
+	GetKvDb(name string) KvDb
 }
