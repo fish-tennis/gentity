@@ -19,17 +19,38 @@ type MongoKvDb struct {
 	valueName string
 }
 
-func (this *MongoKvDb) Find(key interface{}, value interface{}) (bool, error) {
+func (this *MongoKvDb) GetCollection() *mongo.Collection {
+	return this.mongoDatabase.Collection(this.collectionName)
+}
+
+func (this *MongoKvDb) Find(key interface{}) (interface{}, error) {
 	col := this.mongoDatabase.Collection(this.collectionName)
 	result := col.FindOne(context.Background(), bson.D{{this.keyName, key}})
 	if result == nil || result.Err() == mongo.ErrNoDocuments {
-		return false, nil
+		return nil, nil
 	}
-	err := result.Decode(value)
+	var doc bson.M
+	err := result.Decode(&doc)
 	if err != nil {
-		return false, err
+		return nil, err
 	}
-	return true, nil
+	return doc[this.valueName], nil
+}
+
+func (this *MongoKvDb) FindAndDecode(key interface{}, decodeData interface{}) error {
+	col := this.mongoDatabase.Collection(this.collectionName)
+	opts := options.FindOne().
+		SetProjection(bson.D{{this.valueName, 1}})
+	result := col.FindOne(context.Background(), bson.D{{this.keyName, key}}, opts)
+	if result == nil || result.Err() == mongo.ErrNoDocuments {
+		return nil
+	}
+	raw,err := result.DecodeBytes()
+	if err != nil {
+		return err
+	}
+	err = raw.Lookup(this.valueName).Unmarshal(decodeData)
+	return err
 }
 
 func (this *MongoKvDb) Insert(key interface{}, value interface{}) (err error, isDuplicateKey bool) {
@@ -47,7 +68,7 @@ func (this *MongoKvDb) Update(key interface{}, value interface{}, upsert bool) e
 	opt := options.Update().SetUpsert(upsert)
 	_, err := col.UpdateOne(context.Background(),
 		bson.D{{this.keyName, key}},
-		bson.D{{this.valueName, value}},
+		bson.D{{"$set", bson.D{{this.valueName, value}}}},
 		opt)
 	return err
 }

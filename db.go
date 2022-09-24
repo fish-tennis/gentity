@@ -52,7 +52,9 @@ type PlayerDb interface {
 // 游戏应用里,除了账号数据和玩家数据之外,其他以Key-Value存储的数据
 // KvDb接口是为了应用层能够灵活的更换存储数据库(mysql,mongo,redis等)
 type KvDb interface {
-	Find(key interface{}, value interface{}) (bool, error)
+	Find(key interface{}) (interface{}, error)
+
+	FindAndDecode(key interface{}, decodeData interface{}) error
 
 	Insert(key interface{}, value interface{}) (err error, isDuplicateKey bool)
 
