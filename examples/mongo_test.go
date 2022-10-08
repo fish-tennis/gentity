@@ -66,3 +66,31 @@ func TestKvDb(t *testing.T) {
 	t.Logf("%v %v", temp, err5)
 	kvDb.Delete("temp")
 }
+
+// 设置分片
+// 只对集群模式的mongodb有效
+func TestShard(t *testing.T) {
+	//_mongoUri    = "mongodb://192.168.8.169:20000"
+	mongoDb := gentity.NewMongoDb(_mongoUri, _mongoDbName)
+	playerDb := mongoDb.RegisterPlayerDb("player", "_id", "accountid", "regionid")
+	if !mongoDb.Connect() {
+		t.Fatal("connect db error")
+	}
+	defer func() {
+		mongoDb.Disconnect()
+	}()
+
+	err := mongoDb.ShardDatabase(_mongoDbName)
+	if err != nil {
+		t.Logf("ShardDatabase err:%v", err)
+	}
+	playerDb.(*gentity.MongoCollectionPlayer).ShardCollection(true)
+	if err != nil {
+		t.Logf("ShardCollection err:%v", err)
+	}
+	player1 := newTestPlayer(1, 1)
+	err,_ = playerDb.InsertEntity(player1.GetId(), getNewPlayerSaveData(player1))
+	if err != nil {
+		t.Logf("InsertEntity err:%v", err)
+	}
+}

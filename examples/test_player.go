@@ -9,7 +9,7 @@ import (
 // 玩家实体
 type testPlayer struct {
 	gentity.BaseEntity
-	Id        int64  `json:"id"`        // 玩家id
+	Id        int64  `json:"_id"`        // 玩家id
 	Name      string `json:"name"`      // 玩家名
 	AccountId int64  `json:"accountId"` // 账号id
 	RegionId  int32  `json:"regionId"`  // 区服id
@@ -21,7 +21,7 @@ func (this *testPlayer) GetId() int64 {
 
 func newTestPlayer(playerId, accountId int64) *testPlayer {
 	data := &pb.PlayerData{
-		Id: playerId,
+		XId: playerId,
 		AccountId: accountId,
 		Name:      fmt.Sprintf("player%v", playerId),
 		RegionId:  1,
@@ -31,7 +31,7 @@ func newTestPlayer(playerId, accountId int64) *testPlayer {
 
 func newTestPlayerFromData(data *pb.PlayerData) *testPlayer {
 	p := &testPlayer{
-		Id:        data.Id,
+		Id:        data.XId,
 		AccountId: data.AccountId,
 		Name:      data.Name,
 		RegionId:  data.RegionId,
@@ -58,7 +58,7 @@ func newTestPlayerFromData(data *pb.PlayerData) *testPlayer {
 
 func getNewPlayerSaveData(p *testPlayer) map[string]interface{} {
 	newPlayerSaveData := make(map[string]interface{})
-	newPlayerSaveData["id"] = p.Id
+	newPlayerSaveData["_id"] = p.Id
 	newPlayerSaveData["name"] = p.Name
 	newPlayerSaveData["accountid"] = p.AccountId
 	newPlayerSaveData["regionid"] = p.RegionId

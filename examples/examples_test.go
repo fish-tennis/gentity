@@ -43,7 +43,7 @@ func initRedis() gentity.KvCache {
 // 测试根据账号查找角色的接口
 func TestFindPlayerId(t *testing.T) {
 	mongoDb := gentity.NewMongoDb(_mongoUri, _mongoDbName)
-	playerDb := mongoDb.RegisterPlayerDb(_collectionName, "id", "name", "accountid", "regionid")
+	playerDb := mongoDb.RegisterPlayerDb(_collectionName, "_id", "accountid", "regionid")
 	if !mongoDb.Connect() {
 		t.Fatal("connect db error")
 	}
@@ -90,7 +90,7 @@ func deletePlayer(mongoDb *gentity.MongoDb, id int64) {
 // 测试缓存接口
 func TestDbCache(t *testing.T) {
 	mongoDb := gentity.NewMongoDb(_mongoUri, _mongoDbName)
-	playerDb := mongoDb.RegisterPlayerDb(_collectionName, "id", "name", "accountid", "regionid")
+	playerDb := mongoDb.RegisterPlayerDb(_collectionName, "_id", "accountid", "regionid")
 	if !mongoDb.Connect() {
 		t.Fatal("connect db error")
 	}
@@ -132,7 +132,7 @@ func TestDbCache(t *testing.T) {
 // 测试从缓存修复数据的接口
 func TestFixDataFromCache(t *testing.T) {
 	mongoDb := gentity.NewMongoDb(_mongoUri, _mongoDbName)
-	playerDb := mongoDb.RegisterPlayerDb(_collectionName, "id", "name", "accountid", "regionid")
+	playerDb := mongoDb.RegisterPlayerDb(_collectionName, "_id", "accountid", "regionid")
 	if !mongoDb.Connect() {
 		t.Fatal("connect db error")
 	}

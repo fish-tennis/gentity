@@ -111,6 +111,14 @@ func ConvertProtoToMap(protoMessage proto.Message) map[string]interface{} {
 			}
 		case reflect.Interface, reflect.Ptr, reflect.Map:
 			v = fieldVal.Interface()
+		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+			v = fieldVal.Interface()
+		case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+			v = fieldVal.Interface()
+		case reflect.Float32, reflect.Float64:
+			v = fieldVal.Interface()
+		case reflect.String:
+			v = fieldVal.Interface()
 		}
 		if v == nil {
 			GetLogger().Debug("%v %v nil", sf.Name, fieldVal.Kind())
