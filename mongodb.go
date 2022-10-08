@@ -83,22 +83,6 @@ func (this *MongoCollection) FindEntityById(entityId int64, data interface{}) (b
 	return true, nil
 }
 
-//func (this *MongoCollection) FindEntityByName(name string, data interface{}) (bool, error) {
-//	if len(this.uniqueName) == 0 {
-//		return false, errors.New("no uniqueName column")
-//	}
-//	col := this.mongoDatabase.Collection(this.collectionName)
-//	result := col.FindOne(context.Background(), bson.D{{this.uniqueName, name}})
-//	if result == nil || result.Err() == mongo.ErrNoDocuments {
-//		return false, nil
-//	}
-//	err := result.Decode(data)
-//	if err != nil {
-//		return false, err
-//	}
-//	return true, nil
-//}
-
 func (this *MongoCollection) InsertEntity(entityId int64, entityData interface{}) (err error, isDuplicateKey bool) {
 	col := this.mongoDatabase.Collection(this.collectionName)
 	_, err = col.InsertOne(context.Background(), entityData)
