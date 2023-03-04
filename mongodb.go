@@ -23,8 +23,6 @@ type MongoCollection struct {
 	collectionName string
 	// 唯一id
 	uniqueId string
-	//// 唯一name
-	//uniqueName string
 }
 
 func (this *MongoCollection) GetCollection() *mongo.Collection {
