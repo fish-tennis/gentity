@@ -256,6 +256,14 @@ func (this *BaseServerList) Send(serverId int32, cmd gnet.PacketCommand, message
 	return false
 }
 
+func (this *BaseServerList) SendPacket(serverId int32, packet gnet.Packet) bool {
+	connection := this.GetServerConnector(serverId)
+	if connection != nil && connection.IsConnected() {
+		return connection.SendPacket(packet)
+	}
+	return false
+}
+
 // 添加服务器列表更新回调
 func (this *BaseServerList) AddListUpdateHook(onListUpdateFunc ...func(serverList map[string][]ServerInfo, oldServerList map[string][]ServerInfo)) {
 	this.listUpdateHooks = append(this.listUpdateHooks, onListUpdateFunc...)
