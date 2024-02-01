@@ -31,5 +31,6 @@ message PlayerData {
   int64 accountId = 3; // 账号id
   int32 regionId = 4; // 区服id
   BaseInfo baseInfo = 5;
-  QuestSaveData quest = 8;
+  QuestSaveData quest = 6;
+  map<string,bytes> interfaceMap = 7; // 动态数据
 }

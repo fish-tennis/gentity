@@ -53,6 +53,9 @@ func newTestPlayerFromData(data *pb.PlayerData) *testPlayer {
 			Quests: make(map[int32]*pb.QuestData, 0),
 		},
 	}, data.Quest)
+	im := newInterfaceMapComponent(p)
+	im.loadData(data.InterfaceMap)
+	p.AddComponent(im, nil)
 	return p
 }
 

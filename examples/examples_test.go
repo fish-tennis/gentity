@@ -2,6 +2,7 @@ package examples
 
 import (
 	"context"
+	"fmt"
 	"github.com/fish-tennis/gentity"
 	"github.com/fish-tennis/gentity/examples/pb"
 	"github.com/fish-tennis/gnet"
@@ -52,7 +53,7 @@ func TestFindPlayerId(t *testing.T) {
 	}()
 
 	deletePlayer(mongoDb,1)
-	player1 := newTestPlayer(1, 1)
+	player1 := newTestPlayer(103, 1)
 	playerDb.InsertEntity(player1.Id, getNewPlayerSaveData(player1))
 
 	// 适合一个服只有一个角色的应用场景,如竞技游戏
@@ -183,4 +184,30 @@ func TestHandlerRegister(t *testing.T) {
 	gentity.ProcessComponentHandler(tmpPlayer, gnet.PacketCommand(pb.CmdQuest_Cmd_FinishQuestReq), &pb.FinishQuestReq{
 		QuestCfgId: 123,
 	})
+}
+
+func TestPlayerData(t *testing.T) {
+	mongoDb := gentity.NewMongoDb(_mongoUri, _mongoDbName)
+	playerDb := mongoDb.RegisterPlayerDb(_collectionName, "_id", "accountid", "regionid")
+	if !mongoDb.Connect() {
+		t.Fatal("connect db error")
+	}
+	defer func() {
+		mongoDb.Disconnect()
+	}()
+
+	playerId := int64(103)
+	playerData := &pb.PlayerData{}
+	exists,err := playerDb.FindEntityById(playerId, playerData)
+	if err != nil {
+		t.Fatal(fmt.Sprintf("%v", err))
+	}
+	if !exists {
+		newPlayer := newTestPlayer(playerId, 1)
+		playerDb.InsertEntity(newPlayer.Id, getNewPlayerSaveData(newPlayer))
+		t.Logf("InsertPlayer %v", newPlayer.Id)
+	} else {
+		newPlayer := newTestPlayerFromData(playerData)
+		t.Logf("LoadPlayer %v", newPlayer.Id)
+	}
 }

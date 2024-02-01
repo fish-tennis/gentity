@@ -331,7 +331,8 @@ func GetSaveData(obj interface{}, parentName string) (interface{}, error) {
 					it := val.MapRange()
 					for it.Next() {
 						// map的value是proto格式,进行序列化
-						if protoMessage, ok := it.Value().Interface().(proto.Message); ok {
+						valueInterface := it.Value().Interface()
+						if protoMessage, ok := valueInterface.(proto.Message); ok {
 							bytes, err := proto.Marshal(protoMessage)
 							if err != nil {
 								GetLogger().Error("%v.%v proto %v err:%v", parentName, fieldCache.Name, it.Key().Int(), err.Error())
@@ -339,7 +340,17 @@ func GetSaveData(obj interface{}, parentName string) (interface{}, error) {
 							}
 							newMap[it.Key().Int()] = bytes
 						} else {
-							newMap[it.Key().Int()] = it.Value().Interface()
+							// map[int]Saveable
+							if valueSaveable, ok := valueInterface.(Saveable); ok {
+								valueSaveData, valueSaveErr := GetSaveData(valueSaveable, parentName)
+								if valueSaveErr != nil {
+									GetLogger().Error("%v.%v Saveable %v err:%v", parentName, fieldCache.Name, it.Key().Int(), valueSaveErr.Error())
+									return nil, valueSaveErr
+								}
+								newMap[it.Key().Int()] = valueSaveData
+							} else {
+								newMap[it.Key().Int()] = valueInterface
+							}
 						}
 					}
 					return newMap, nil
@@ -350,7 +361,8 @@ func GetSaveData(obj interface{}, parentName string) (interface{}, error) {
 					it := val.MapRange()
 					for it.Next() {
 						// map的value是proto格式,进行序列化
-						if protoMessage, ok := it.Value().Interface().(proto.Message); ok {
+						valueInterface := it.Value().Interface()
+						if protoMessage, ok := valueInterface.(proto.Message); ok {
 							bytes, err := proto.Marshal(protoMessage)
 							if err != nil {
 								GetLogger().Error("%v.%v proto %v err:%v", parentName, fieldCache.Name, it.Key().Uint(), err.Error())
@@ -358,7 +370,17 @@ func GetSaveData(obj interface{}, parentName string) (interface{}, error) {
 							}
 							newMap[it.Key().Uint()] = bytes
 						} else {
-							newMap[it.Key().Uint()] = it.Value().Interface()
+							// map[uint]Saveable
+							if valueSaveable, ok := valueInterface.(Saveable); ok {
+								valueSaveData, valueSaveErr := GetSaveData(valueSaveable, parentName)
+								if valueSaveErr != nil {
+									GetLogger().Error("%v.%v Saveable %v err:%v", parentName, fieldCache.Name, it.Key().Int(), valueSaveErr.Error())
+									return nil, valueSaveErr
+								}
+								newMap[it.Key().Uint()] = valueSaveData
+							} else {
+								newMap[it.Key().Uint()] = valueInterface
+							}
 						}
 					}
 					return newMap, nil
@@ -369,7 +391,8 @@ func GetSaveData(obj interface{}, parentName string) (interface{}, error) {
 					it := val.MapRange()
 					for it.Next() {
 						// map的value是proto格式,进行序列化
-						if protoMessage, ok := it.Value().Interface().(proto.Message); ok {
+						valueInterface := it.Value().Interface()
+						if protoMessage, ok := valueInterface.(proto.Message); ok {
 							bytes, err := proto.Marshal(protoMessage)
 							if err != nil {
 								GetLogger().Error("%v.%v proto %v err:%v", parentName, fieldCache.Name, it.Key().String(), err.Error())
@@ -377,7 +400,17 @@ func GetSaveData(obj interface{}, parentName string) (interface{}, error) {
 							}
 							newMap[it.Key().String()] = bytes
 						} else {
-							newMap[it.Key().String()] = it.Value().Interface()
+							// map[string]Saveable
+							if valueSaveable, ok := valueInterface.(Saveable); ok {
+								valueSaveData, valueSaveErr := GetSaveData(valueSaveable, parentName)
+								if valueSaveErr != nil {
+									GetLogger().Error("%v.%v Saveable %v err:%v", parentName, fieldCache.Name, it.Key().Int(), valueSaveErr.Error())
+									return nil, valueSaveErr
+								}
+								newMap[it.Key().String()] = valueSaveData
+							} else {
+								newMap[it.Key().String()] = valueInterface
+							}
 						}
 					}
 					return newMap, nil
@@ -397,7 +430,8 @@ func GetSaveData(obj interface{}, parentName string) (interface{}, error) {
 				newSlice := make([]interface{}, 0, val.Len())
 				for i := 0; i < val.Len(); i++ {
 					sliceElem := val.Index(i)
-					if protoMessage, ok := sliceElem.Interface().(proto.Message); ok {
+					valueInterface := sliceElem.Interface()
+					if protoMessage, ok := valueInterface.(proto.Message); ok {
 						bytes, err := proto.Marshal(protoMessage)
 						if err != nil {
 							GetLogger().Error("%v.%v proto %v err:%v", parentName, fieldCache.Name, i, err.Error())
@@ -405,7 +439,17 @@ func GetSaveData(obj interface{}, parentName string) (interface{}, error) {
 						}
 						newSlice = append(newSlice, bytes)
 					} else {
-						newSlice = append(newSlice, sliceElem.Interface())
+						// []Saveable
+						if valueSaveable, ok := valueInterface.(Saveable); ok {
+							valueSaveData, valueSaveErr := GetSaveData(valueSaveable, parentName)
+							if valueSaveErr != nil {
+								GetLogger().Error("%v.%v Saveable %v err:%v", parentName, fieldCache.Name, i, valueSaveErr.Error())
+								return nil, valueSaveErr
+							}
+							newSlice = append(newSlice, valueSaveData)
+						} else {
+							newSlice = append(newSlice, valueInterface)
+						}
 					}
 				}
 				// proto
@@ -420,8 +464,19 @@ func GetSaveData(obj interface{}, parentName string) (interface{}, error) {
 			// proto.Message -> []byte
 			if protoMessage, ok := fieldInterface.(proto.Message); ok {
 				return proto.Marshal(protoMessage)
+			} else {
+				// Saveable
+				if valueSaveable, ok := fieldInterface.(Saveable); ok {
+					valueSaveData, valueSaveErr := GetSaveData(valueSaveable, parentName)
+					if valueSaveErr != nil {
+						GetLogger().Error("%v.%v Saveable err:%v", parentName, fieldCache.Name, valueSaveErr.Error())
+						return nil, valueSaveErr
+					}
+					return valueSaveData, nil
+				} else {
+					// TODO:扩展一个自定义序列化接口
+				}
 			}
-			// TODO:扩展一个自定义序列化接口
 
 		default:
 			return nil, errors.New("unsupport key type")
