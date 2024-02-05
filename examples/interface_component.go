@@ -19,6 +19,7 @@ func newInterfaceMapComponent(p *testPlayer) *interfaceMapComponent {
 	}
 }
 
+// 反序列化
 func (im *interfaceMapComponent) loadData(sourceData map[string][]byte) {
 	registerValueCtor := map[string]func() interface{}{
 		"item1": func() interface{} {
