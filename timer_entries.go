@@ -31,6 +31,8 @@ type TimerEntries struct {
 	nowFunc func() time.Time
 	// resetTime时的最小间隔,默认1秒
 	minInterval time.Duration
+	// 时间偏差
+	timeOffset time.Duration
 }
 
 func NewTimerEntries() *TimerEntries {
@@ -57,6 +59,22 @@ type timerEntry struct {
 	job  TimerJob
 }
 
+func (this *TimerEntries) GetMinInterval() time.Duration {
+	return this.minInterval
+}
+
+func (this *TimerEntries) SetMinInterval(minInterval time.Duration) {
+	this.minInterval = minInterval
+}
+
+func (this *TimerEntries) GetTimeOffset() time.Duration {
+	return this.timeOffset
+}
+
+func (this *TimerEntries) SetTimeOffset(timeOffset time.Duration) {
+	this.timeOffset = timeOffset
+}
+
 // 指定时间点执行回调
 func (this *TimerEntries) AddTimer(t time.Time, f TimerJob) {
 	this.addEntry(&timerEntry{t, f})
@@ -64,7 +82,7 @@ func (this *TimerEntries) AddTimer(t time.Time, f TimerJob) {
 
 // 现在往后多少时间执行回调
 func (this *TimerEntries) After(d time.Duration, f TimerJob) {
-	this.addEntry(&timerEntry{this.getNow().Add(d), f})
+	this.addEntry(&timerEntry{this.Now().Add(d), f})
 }
 
 func (this *TimerEntries) addEntry(entry *timerEntry) {
@@ -72,12 +90,16 @@ func (this *TimerEntries) addEntry(entry *timerEntry) {
 	if this.Timer == nil {
 		return
 	}
-	this.resetTime(this.getNow())
+	this.resetTime(this.Now())
 }
 
-func (this *TimerEntries) getNow() time.Time {
+func (this *TimerEntries) Now() time.Time {
 	if this.nowFunc == nil {
-		return time.Now()
+		if this.timeOffset == 0 {
+			return time.Now()
+		} else {
+			return time.Now().Add(this.timeOffset)
+		}
 	}
 	return this.nowFunc()
 }
@@ -106,7 +128,7 @@ func (this *TimerEntries) Start() {
 		this.Timer = time.NewTimer(time.Hour * 100000)
 	} else {
 		// 以最快到期的时间间隔创建一个NewTimer
-		this.Timer = time.NewTimer(this.entries[0].next.Sub(this.getNow()))
+		this.Timer = time.NewTimer(this.entries[0].next.Sub(this.Now()))
 	}
 }
 
