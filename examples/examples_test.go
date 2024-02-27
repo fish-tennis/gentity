@@ -121,6 +121,11 @@ func TestDbCache(t *testing.T) {
 	// 只会把quest组件保存到缓存
 	player1.SaveCache(kvCache)
 
+	interfaceMap := player1.GetComponentByName("InterfaceMap").(*interfaceMapComponent)
+	interfaceMap.InterfaceMap["item1"].(*item1).addExp(10)
+	interfaceMap.SetDirty("item1", true)
+	player1.SaveCache(kvCache)
+
 	//time.Sleep(time.Second*3)
 	// 只会把修改过数据的组件更新到数据库
 	gentity.SaveEntityChangedDataToDb(playerDb, player1, kvCache, true)

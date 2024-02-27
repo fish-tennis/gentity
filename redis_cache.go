@@ -191,13 +191,23 @@ func convertValueToStringOrInterface(val reflect.Value) (interface{}, error) {
 				return nil, errors.New(fmt.Sprintf("unsupport type:%v", val.Kind()))
 			}
 			i := val.Interface()
+			// protobuf格式
 			if protoMessage, ok := i.(proto.Message); ok {
 				bytes, protoErr := proto.Marshal(protoMessage)
 				if protoErr != nil {
-					GetLogger().Error("proto err:%v", protoErr.Error())
+					GetLogger().Error("convert proto err:%v", protoErr.Error())
 					return nil, protoErr
 				}
 				return bytes, nil
+			}
+			// Saveable格式
+			if valueSaveable, ok := i.(Saveable); ok {
+				valueSaveData, valueSaveErr := GetSaveData(valueSaveable, "")
+				if valueSaveErr != nil {
+					GetLogger().Error("convert Saveabl err:%v", valueSaveErr.Error())
+					return nil, valueSaveErr
+				}
+				return valueSaveData, nil
 			}
 			return i, nil
 		}

@@ -24,25 +24,22 @@ func (im *interfaceMapComponent) loadData(sourceData map[string][]byte) {
 	registerValueCtor := map[string]func() interface{}{
 		"item1": func() interface{} {
 			return &item1{
-				Data: &pb.BaseInfo{
-				},
+				Data: &pb.BaseInfo{},
 			}
 		},
 		"item2": func() interface{} {
 			return &item2{
-				Data: &pb.QuestData{
-				},
+				Data: &pb.QuestData{},
 			}
 		},
 		"item3": func() interface{} {
 			return &item1{
-				Data: &pb.BaseInfo{
-				},
+				Data: &pb.BaseInfo{},
 			}
 		},
 	}
 	for k, v := range sourceData {
-		if ctor,ok := registerValueCtor[k]; ok {
+		if ctor, ok := registerValueCtor[k]; ok {
 			// 动态构造
 			val := ctor()
 			err := gentity.LoadData(val, v)
@@ -91,6 +88,11 @@ func (im *interfaceMapComponent) makeTestData() {
 type item1 struct {
 	gentity.BaseDirtyMark
 	Data *pb.BaseInfo `db:"item1"`
+}
+
+func (i1 *item1) addExp(exp int32) {
+	i1.Data.Exp += exp
+	i1.SetDirty()
 }
 
 type item2 struct {
