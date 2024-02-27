@@ -12,11 +12,12 @@ import (
 )
 
 var (
-	_mongoUri    = "mongodb://localhost:27017"
-	_mongoDbName = "test"
+	_mongoUri       = "mongodb://localhost:27017"
+	_mongoDbName    = "test"
 	_collectionName = "player"
-	_redisAddrs = []string{"127.0.0.1:6379"}
-	_redisPassword = ""
+	_redisAddrs     = []string{"127.0.0.1:6379"}
+	_redisUsername  = ""
+	_redisPassword  = ""
 	// 如果部署的是单机版redis,则需要修改为false
 	_isRedisCluster = true
 )
@@ -25,18 +26,20 @@ func initRedis() gentity.KvCache {
 	var redisCmdable redis.Cmdable
 	if _isRedisCluster {
 		redisCmdable = redis.NewClusterClient(&redis.ClusterOptions{
-			Addrs:_redisAddrs,
+			Addrs:    _redisAddrs,
+			Username: _redisUsername,
 			Password: _redisPassword,
 		})
 	} else {
 		redisCmdable = redis.NewClient(&redis.Options{
-			Addr:_redisAddrs[0],
+			Addr:     _redisAddrs[0],
+			Username: _redisUsername,
 			Password: _redisPassword,
 		})
 	}
 	pong, err := redisCmdable.Ping(context.Background()).Result()
 	if err != nil || pong == "" {
-		panic("redis connect error")
+		panic(fmt.Sprintf("redis connect error:%v", err.Error()))
 	}
 	return gentity.NewRedisCache(redisCmdable)
 }
@@ -52,7 +55,7 @@ func TestFindPlayerId(t *testing.T) {
 		mongoDb.Disconnect()
 	}()
 
-	deletePlayer(mongoDb,1)
+	deletePlayer(mongoDb, 1)
 	player1 := newTestPlayer(103, 1)
 	playerDb.InsertEntity(player1.Id, getNewPlayerSaveData(player1))
 
@@ -72,8 +75,8 @@ func TestFindPlayerId(t *testing.T) {
 
 	// 新建3个角色数据
 	for i := 0; i < 3; i++ {
-		deletePlayer(mongoDb,int64(100 + i))
-		playeri := newTestPlayer(int64(100 + i), 100)
+		deletePlayer(mongoDb, int64(100+i))
+		playeri := newTestPlayer(int64(100+i), 100)
 		playerDb.InsertEntity(playeri.Id, getNewPlayerSaveData(playeri))
 	}
 	// 一个账号下的角色列表
@@ -100,7 +103,7 @@ func TestDbCache(t *testing.T) {
 	}()
 	kvCache := initRedis()
 
-	deletePlayer(mongoDb,1)
+	deletePlayer(mongoDb, 1)
 	player1 := newTestPlayer(1, 1)
 	playerDb.InsertEntity(player1.Id, getNewPlayerSaveData(player1))
 
@@ -112,7 +115,7 @@ func TestDbCache(t *testing.T) {
 	quest := player1.GetComponentByName("quest").(*questComponent)
 	quest.Finished.Add(1)
 	quest.Quests.Add(&pb.QuestData{
-		CfgId: 2,
+		CfgId:    2,
 		Progress: 5,
 	})
 	// 只会把quest组件保存到缓存
@@ -142,7 +145,7 @@ func TestFixDataFromCache(t *testing.T) {
 	}()
 	kvCache := initRedis()
 
-	deletePlayer(mongoDb,1)
+	deletePlayer(mongoDb, 1)
 	player1 := newTestPlayer(1, 1)
 	playerDb.InsertEntity(player1.Id, getNewPlayerSaveData(player1))
 
@@ -153,7 +156,7 @@ func TestFixDataFromCache(t *testing.T) {
 	quest := player1.GetComponentByName("quest").(*questComponent)
 	quest.Finished.Add(1)
 	quest.Quests.Add(&pb.QuestData{
-		CfgId: 2,
+		CfgId:    2,
 		Progress: 5,
 	})
 	player1.SaveCache(kvCache)
@@ -176,10 +179,10 @@ func TestFixDataFromCache(t *testing.T) {
 func TestHandlerRegister(t *testing.T) {
 	gnet.SetLogLevel(gnet.DebugLevel)
 	gentity.SetLogger(gnet.GetLogger())
-	tmpPlayer := newTestPlayer(0,0)
+	tmpPlayer := newTestPlayer(0, 0)
 	connectionHandler := gnet.NewDefaultConnectionHandler(nil)
 	// 扫描注册消息
-	gentity.AutoRegisterComponentHandler(tmpPlayer, connectionHandler, "On", "Handle", "gserver" )
+	gentity.AutoRegisterComponentHandler(tmpPlayer, connectionHandler, "On", "Handle", "gserver")
 	// 模拟一次消息调用
 	gentity.ProcessComponentHandler(tmpPlayer, gnet.PacketCommand(pb.CmdQuest_Cmd_FinishQuestReq), &pb.FinishQuestReq{
 		QuestCfgId: 123,
@@ -198,7 +201,7 @@ func TestPlayerData(t *testing.T) {
 
 	playerId := int64(103)
 	playerData := &pb.PlayerData{}
-	exists,err := playerDb.FindEntityById(playerId, playerData)
+	exists, err := playerDb.FindEntityById(playerId, playerData)
 	if err != nil {
 		t.Fatal(fmt.Sprintf("%v", err))
 	}
