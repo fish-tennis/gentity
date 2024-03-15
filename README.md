@@ -5,6 +5,8 @@
 
 网络库使用[gnet](https://github.com/fish-tennis/gnet)
 
+![gentity](https://github.com/fish-tennis/doc/blob/master/imgs/gentity/gentity.png)
+
 ## Entity-Component
 Entity-Component模式是类似Unity的GameObject-Component的实体组件模式,便于组件解耦
 
@@ -85,12 +87,16 @@ func (this *BaseInfo) HandlePlayerEntryGameOk(cmd gnet.PacketCommand, msg *pb.Pl
 
 同时,RoutineEntity内置了一个协程安全的计时器
 
+![routine entity](https://github.com/fish-tennis/doc/blob/master/imgs/gentity/routineentity.png)
+
 示例:[gserver](https://github.com/fish-tennis/gserver) 里的玩家对象Player
 
 ## 分布式实体DistributedEntity
 分布式实体DistributedEntity在RoutineEntity的基础上增加了数据库加载接口,分布式锁接口,消息路由接口
 
 示例:[gserver](https://github.com/fish-tennis/gserver) 里的公会对象Guild
+
+![distributed entity](https://github.com/fish-tennis/doc/blob/master/imgs/gentity/distributedentity.png)
 
 ## 服务器自动组网
 服务器注册,发现,组网
