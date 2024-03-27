@@ -314,7 +314,7 @@ func FixEntityDataFromCache(entity Entity, db EntityDb, kvCache KvCache, cacheKe
 					GetLogger().Debug("new %v", fieldCache.Name)
 				}
 				fieldInterface := val.Interface()
-				cacheKey := GetPlayerComponentChildCacheKey(entity.GetId(), component.GetName(), fieldCache.Name)
+				cacheKey := GetEntityComponentChildCacheKey(cacheKeyPrefix, entity.GetId(), component.GetName(), fieldCache.Name)
 				hasCache, err := LoadFromCache(fieldInterface, kvCache, cacheKey)
 				if !hasCache {
 					return true

@@ -65,7 +65,7 @@ func (this *MongoCollection) ShardCollection(hashedShardKey bool) error {
 }
 
 // 根据id查找数据
-func (this *MongoCollection) FindEntityById(entityId int64, data interface{}) (bool, error) {
+func (this *MongoCollection) FindEntityById(entityId interface{}, data interface{}) (bool, error) {
 	if len(this.uniqueId) == 0 {
 		return false, errors.New("no uniqueId column")
 	}
@@ -81,7 +81,7 @@ func (this *MongoCollection) FindEntityById(entityId int64, data interface{}) (b
 	return true, nil
 }
 
-func (this *MongoCollection) InsertEntity(entityId int64, entityData interface{}) (err error, isDuplicateKey bool) {
+func (this *MongoCollection) InsertEntity(entityId interface{}, entityData interface{}) (err error, isDuplicateKey bool) {
 	col := this.mongoDatabase.Collection(this.collectionName)
 	_, err = col.InsertOne(context.Background(), entityData)
 	if err != nil {
@@ -90,13 +90,13 @@ func (this *MongoCollection) InsertEntity(entityId int64, entityData interface{}
 	return
 }
 
-func (this *MongoCollection) SaveEntity(entityId int64, entityData interface{}) error {
+func (this *MongoCollection) SaveEntity(entityId interface{}, entityData interface{}) error {
 	col := this.mongoDatabase.Collection(this.collectionName)
 	_, err := col.UpdateOne(context.Background(), bson.D{{this.uniqueId, entityId}}, entityData)
 	return err
 }
 
-func (this *MongoCollection) SaveComponent(entityId int64, componentName string, componentData interface{}) error {
+func (this *MongoCollection) SaveComponent(entityId interface{}, componentName string, componentData interface{}) error {
 	col := this.mongoDatabase.Collection(this.collectionName)
 	_, updateErr := col.UpdateOne(context.Background(), bson.D{{this.uniqueId, entityId}},
 		bson.D{{"$set", bson.D{{componentName, componentData}}}})
@@ -106,7 +106,7 @@ func (this *MongoCollection) SaveComponent(entityId int64, componentName string,
 	return nil
 }
 
-func (this *MongoCollection) SaveComponents(entityId int64, components map[string]interface{}) error {
+func (this *MongoCollection) SaveComponents(entityId interface{}, components map[string]interface{}) error {
 	if len(components) == 0 {
 		return nil
 	}
@@ -119,7 +119,7 @@ func (this *MongoCollection) SaveComponents(entityId int64, components map[strin
 	return nil
 }
 
-func (this *MongoCollection) SaveComponentField(entityId int64, componentName string, fieldName string, fieldData interface{}) error {
+func (this *MongoCollection) SaveComponentField(entityId interface{}, componentName string, fieldName string, fieldData interface{}) error {
 	col := this.mongoDatabase.Collection(this.collectionName)
 	// NOTE:如果player.componentName == null
 	// 直接更新player.componentName.fieldName会报错: Cannot create field 'fieldName' in element
@@ -132,7 +132,7 @@ func (this *MongoCollection) SaveComponentField(entityId int64, componentName st
 }
 
 // 删除1个组件的某些字段
-func (this *MongoCollection) DeleteComponentField(entityId int64, componentName string, fieldName ...string) error {
+func (this *MongoCollection) DeleteComponentField(entityId interface{}, componentName string, fieldName ...string) error {
 	if len(fieldName) == 0 {
 		return nil
 	}

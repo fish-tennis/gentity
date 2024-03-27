@@ -14,18 +14,18 @@ func GetComponentSaveData(component Component) (interface{}, error) {
 }
 
 // 把组件的修改数据保存到缓存
-func SaveComponentChangedDataToCache(kvCache KvCache, component Component) {
+func SaveComponentChangedDataToCache(kvCache KvCache, cacheKeyPrefix string, component Component) {
 	structCache := GetSaveableStruct(reflect.TypeOf(component))
 	if structCache == nil {
 		return
 	}
 	if structCache.IsSingleField() {
-		cacheKey := GetPlayerComponentCacheKey(component.GetEntity().GetId(), component.GetName())
+		cacheKey := GetEntityComponentCacheKey(cacheKeyPrefix, component.GetEntity().GetId(), component.GetName())
 		SaveChangedDataToCache(kvCache, component, cacheKey)
 	} else {
 		reflectVal := reflect.ValueOf(component).Elem()
 		for _, fieldCache := range structCache.Children {
-			cacheKey := GetPlayerComponentChildCacheKey(component.GetEntity().GetId(), component.GetName(), fieldCache.Name)
+			cacheKey := GetEntityComponentChildCacheKey(cacheKeyPrefix, component.GetEntity().GetId(), component.GetName(), fieldCache.Name)
 			val := reflectVal.Field(fieldCache.FieldIndex)
 			if val.IsNil() {
 				_, err := kvCache.Del(cacheKey)
@@ -192,7 +192,16 @@ func SaveChangedDataToCache(kvCache KvCache, obj interface{}, cacheKeyName strin
 }
 
 // Entity的变化数据保存到数据库
+//
+//	key为entity.GetId()
 func SaveEntityChangedDataToDb(entityDb EntityDb, entity Entity, kvCache KvCache, removeCacheAfterSaveDb bool) error {
+	return SaveEntityChangedDataToDbByKey(entityDb, entity, entity.GetId(), kvCache, removeCacheAfterSaveDb)
+}
+
+// Entity的变化数据保存到数据库
+//
+//	指定key
+func SaveEntityChangedDataToDbByKey(entityDb EntityDb, entity Entity, entityKey interface{}, kvCache KvCache, removeCacheAfterSaveDb bool) error {
 	changedDatas := make(map[string]interface{})
 	var saved []Saveable
 	var delKeys []string
@@ -205,21 +214,21 @@ func SaveEntityChangedDataToDb(entityDb EntityDb, entity Entity, kvCache KvCache
 			if saveable, ok := component.(Saveable); ok {
 				// 如果某个组件数据没改变过,就无需保存
 				if !saveable.IsChanged() {
-					GetLogger().Debug("%v ignore %v", entity.GetId(), component.GetName())
+					GetLogger().Debug("%v ignore %v", entityKey, component.GetName())
 					return true
 				}
 				saveData, err := GetComponentSaveData(component)
 				if err != nil {
-					GetLogger().Error("%v Save %v err:%v", entity.GetId(), component.GetName(), err.Error())
+					GetLogger().Error("%v Save %v err:%v", entityKey, component.GetName(), err.Error())
 					return true
 				}
 				// 使用protobuf存mongodb时,mongodb默认会把字段名转成小写,因为protobuf没设置bson tag
 				changedDatas[component.GetNameLower()] = saveData
 				if removeCacheAfterSaveDb {
-					delKeys = append(delKeys, GetEntityComponentCacheKey("p", entity.GetId(), component.GetName()))
+					delKeys = append(delKeys, GetEntityComponentCacheKey("p", entityKey, component.GetName()))
 				}
 				saved = append(saved, saveable)
-				GetLogger().Debug("SaveDb %v %v", entity.GetId(), component.GetName())
+				GetLogger().Debug("SaveDb %v %v", entityKey, component.GetName())
 			}
 		} else {
 			reflectVal := reflect.ValueOf(component).Elem()
@@ -234,35 +243,35 @@ func SaveEntityChangedDataToDb(entityDb EntityDb, entity Entity, kvCache KvCache
 				if saveable, ok := fieldInterface.(Saveable); ok {
 					// 如果某个组件数据没改变过,就无需保存
 					if !saveable.IsChanged() {
-						GetLogger().Debug("%v ignore %v.%v", entity.GetId(), component.GetName(), childName)
+						GetLogger().Debug("%v ignore %v.%v", entityKey, component.GetName(), childName)
 						continue
 					}
 					childSaveData, err := GetSaveData(fieldInterface, childName)
 					if err != nil {
-						GetLogger().Error("%v Save %v.%v err:%v", entity.GetId(), component.GetName(), childName, err.Error())
+						GetLogger().Error("%v Save %v.%v err:%v", entityKey, component.GetName(), childName, err.Error())
 						continue
 					}
 					changedDatas[childName] = childSaveData
 					if removeCacheAfterSaveDb {
-						delKeys = append(delKeys, GetEntityComponentChildCacheKey("p", entity.GetId(), component.GetName(), fieldCache.Name))
+						delKeys = append(delKeys, GetEntityComponentChildCacheKey("p", entityKey, component.GetName(), fieldCache.Name))
 					}
 					saved = append(saved, saveable)
-					GetLogger().Debug("SaveDb %v %v.%v", entity.GetId(), component.GetName(), childName)
+					GetLogger().Debug("SaveDb %v %v.%v", entityKey, component.GetName(), childName)
 				}
 			}
 		}
 		return true
 	})
 	if len(changedDatas) == 0 {
-		GetLogger().Debug("ignore unchange data %v", entity.GetId())
+		GetLogger().Debug("ignore unchange data %v", entityKey)
 		return nil
 	}
-	saveDbErr := entityDb.SaveComponents(entity.GetId(), changedDatas)
+	saveDbErr := entityDb.SaveComponents(entityKey, changedDatas)
 	if saveDbErr != nil {
-		GetLogger().Error("SaveDb %v err:%v", entity.GetId(), saveDbErr)
+		GetLogger().Error("SaveDb %v err:%v", entityKey, saveDbErr)
 		GetLogger().Error("%v", changedDatas)
 	} else {
-		GetLogger().Debug("SaveDb %v", entity.GetId())
+		GetLogger().Debug("SaveDb %v", entityKey)
 	}
 	if saveDbErr == nil {
 		// 保存数据库成功后,重置修改标记
@@ -272,7 +281,7 @@ func SaveEntityChangedDataToDb(entityDb EntityDb, entity Entity, kvCache KvCache
 		if len(delKeys) > 0 {
 			// 保存数据库成功后,才删除缓存
 			kvCache.Del(delKeys...)
-			GetLogger().Debug("RemoveCache %v %v", entity.GetId(), delKeys)
+			GetLogger().Debug("RemoveCache %v %v", entityKey, delKeys)
 		}
 	}
 	return saveDbErr

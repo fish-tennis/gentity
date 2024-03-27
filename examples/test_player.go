@@ -9,7 +9,7 @@ import (
 // 玩家实体
 type testPlayer struct {
 	gentity.BaseEntity
-	Id        int64  `json:"_id"`        // 玩家id
+	Id        int64  `json:"_id"`       // 玩家id
 	Name      string `json:"name"`      // 玩家名
 	AccountId int64  `json:"accountId"` // 账号id
 	RegionId  int32  `json:"regionId"`  // 区服id
@@ -19,9 +19,13 @@ func (this *testPlayer) GetId() int64 {
 	return this.Id
 }
 
+func (this *testPlayer) SaveCache(kvCache gentity.KvCache) error {
+	return this.BaseEntity.SaveCache(kvCache, "p")
+}
+
 func newTestPlayer(playerId, accountId int64) *testPlayer {
 	data := &pb.PlayerData{
-		XId: playerId,
+		XId:       playerId,
 		AccountId: accountId,
 		Name:      fmt.Sprintf("player%v", playerId),
 		RegionId:  1,
