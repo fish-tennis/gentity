@@ -27,7 +27,7 @@ type ComponentHandlerInfo struct {
 // 可以在组件里编写函数: HandleXxx(cmd PacketCommand, req *pb.Xxx)
 //
 // 按照这种格式编写的函数,调用AutoRegisterComponentHandler,可以自动注册
-func AutoRegisterComponentHandler(entity Entity, packetHandlerRegister gnet.PacketHandlerRegister, clientHandlerPrefix,otherHandlerPrefix,protoPackageName string) {
+func AutoRegisterComponentHandler(entity Entity, packetHandlerRegister gnet.PacketHandlerRegister, clientHandlerPrefix, otherHandlerPrefix, protoPackageName string) {
 	entity.RangeComponent(func(component Component) bool {
 		typ := reflect.TypeOf(component)
 		// 如: game.Quest -> Quest
@@ -38,10 +38,10 @@ func AutoRegisterComponentHandler(entity Entity, packetHandlerRegister gnet.Pack
 				continue
 			}
 			isClientMessage := false
-			if strings.HasPrefix(method.Name, clientHandlerPrefix) {
+			if packetHandlerRegister != nil && clientHandlerPrefix != "" && strings.HasPrefix(method.Name, clientHandlerPrefix) {
 				// 客户端消息回调
 				isClientMessage = true
-			} else if strings.HasPrefix(method.Name, otherHandlerPrefix) {
+			} else if otherHandlerPrefix != "" && strings.HasPrefix(method.Name, otherHandlerPrefix) {
 				// 非客户端的逻辑消息回调
 			} else {
 				continue
@@ -72,13 +72,14 @@ func AutoRegisterComponentHandler(entity Entity, packetHandlerRegister gnet.Pack
 			}
 			messageId := util.GetMessageIdByMessageName(protoPackageName, componentStructName, messageName)
 			if messageId == 0 {
+				GetLogger().Debug("methodName match:%v but messageId==0", method.Name)
 				continue
 			}
 			cmd := gnet.PacketCommand(messageId)
 			// 注册消息回调到组件上
 			_componentHandlerInfos[cmd] = &ComponentHandlerInfo{
 				componentName: component.GetName(),
-				method: method,
+				method:        method,
 			}
 			// 注册客户端消息
 			if isClientMessage && packetHandlerRegister != nil {
@@ -94,7 +95,7 @@ func AutoRegisterComponentHandler(entity Entity, packetHandlerRegister gnet.Pack
 func RegisterProtoCodeGen(packetHandlerRegister gnet.PacketHandlerRegister, componentName string, cmd gnet.PacketCommand, protoMessage proto.Message, handler func(c Component, m proto.Message)) {
 	_componentHandlerInfos[cmd] = &ComponentHandlerInfo{
 		componentName: componentName,
-		handler: handler,
+		handler:       handler,
 	}
 	packetHandlerRegister.Register(cmd, nil, protoMessage)
 }
