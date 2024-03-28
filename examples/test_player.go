@@ -20,7 +20,7 @@ func (this *testPlayer) GetId() int64 {
 }
 
 func (this *testPlayer) SaveCache(kvCache gentity.KvCache) error {
-	return this.BaseEntity.SaveCache(kvCache, "p")
+	return this.BaseEntity.SaveCache(kvCache, "p", this.GetId())
 }
 
 func newTestPlayer(playerId, accountId int64) *testPlayer {

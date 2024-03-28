@@ -65,12 +65,12 @@ func (this *MongoCollection) ShardCollection(hashedShardKey bool) error {
 }
 
 // 根据id查找数据
-func (this *MongoCollection) FindEntityById(entityId interface{}, data interface{}) (bool, error) {
+func (this *MongoCollection) FindEntityById(entityKey interface{}, data interface{}) (bool, error) {
 	if len(this.uniqueId) == 0 {
 		return false, errors.New("no uniqueId column")
 	}
 	col := this.mongoDatabase.Collection(this.collectionName)
-	result := col.FindOne(context.Background(), bson.D{{this.uniqueId, entityId}})
+	result := col.FindOne(context.Background(), bson.D{{this.uniqueId, entityKey}})
 	if result == nil || result.Err() == mongo.ErrNoDocuments {
 		return false, nil
 	}
@@ -81,7 +81,7 @@ func (this *MongoCollection) FindEntityById(entityId interface{}, data interface
 	return true, nil
 }
 
-func (this *MongoCollection) InsertEntity(entityId interface{}, entityData interface{}) (err error, isDuplicateKey bool) {
+func (this *MongoCollection) InsertEntity(entityKey interface{}, entityData interface{}) (err error, isDuplicateKey bool) {
 	col := this.mongoDatabase.Collection(this.collectionName)
 	_, err = col.InsertOne(context.Background(), entityData)
 	if err != nil {
@@ -90,15 +90,15 @@ func (this *MongoCollection) InsertEntity(entityId interface{}, entityData inter
 	return
 }
 
-func (this *MongoCollection) SaveEntity(entityId interface{}, entityData interface{}) error {
+func (this *MongoCollection) SaveEntity(entityKey interface{}, entityData interface{}) error {
 	col := this.mongoDatabase.Collection(this.collectionName)
-	_, err := col.UpdateOne(context.Background(), bson.D{{this.uniqueId, entityId}}, entityData)
+	_, err := col.UpdateOne(context.Background(), bson.D{{this.uniqueId, entityKey}}, entityData)
 	return err
 }
 
-func (this *MongoCollection) SaveComponent(entityId interface{}, componentName string, componentData interface{}) error {
+func (this *MongoCollection) SaveComponent(entityKey interface{}, componentName string, componentData interface{}) error {
 	col := this.mongoDatabase.Collection(this.collectionName)
-	_, updateErr := col.UpdateOne(context.Background(), bson.D{{this.uniqueId, entityId}},
+	_, updateErr := col.UpdateOne(context.Background(), bson.D{{this.uniqueId, entityKey}},
 		bson.D{{"$set", bson.D{{componentName, componentData}}}})
 	if updateErr != nil {
 		return updateErr
@@ -106,12 +106,12 @@ func (this *MongoCollection) SaveComponent(entityId interface{}, componentName s
 	return nil
 }
 
-func (this *MongoCollection) SaveComponents(entityId interface{}, components map[string]interface{}) error {
+func (this *MongoCollection) SaveComponents(entityKey interface{}, components map[string]interface{}) error {
 	if len(components) == 0 {
 		return nil
 	}
 	col := this.mongoDatabase.Collection(this.collectionName)
-	_, updateErr := col.UpdateMany(context.Background(), bson.D{{this.uniqueId, entityId}},
+	_, updateErr := col.UpdateMany(context.Background(), bson.D{{this.uniqueId, entityKey}},
 		bson.D{{"$set", components}})
 	if updateErr != nil {
 		return updateErr
@@ -119,11 +119,11 @@ func (this *MongoCollection) SaveComponents(entityId interface{}, components map
 	return nil
 }
 
-func (this *MongoCollection) SaveComponentField(entityId interface{}, componentName string, fieldName string, fieldData interface{}) error {
+func (this *MongoCollection) SaveComponentField(entityKey interface{}, componentName string, fieldName string, fieldData interface{}) error {
 	col := this.mongoDatabase.Collection(this.collectionName)
 	// NOTE:如果player.componentName == null
 	// 直接更新player.componentName.fieldName会报错: Cannot create field 'fieldName' in element
-	_, updateErr := col.UpdateOne(context.Background(), bson.D{{this.uniqueId, entityId}},
+	_, updateErr := col.UpdateOne(context.Background(), bson.D{{this.uniqueId, entityKey}},
 		bson.D{{"$set", bson.D{{componentName + "." + fieldName, fieldData}}}})
 	if updateErr != nil {
 		return updateErr
@@ -132,7 +132,7 @@ func (this *MongoCollection) SaveComponentField(entityId interface{}, componentN
 }
 
 // 删除1个组件的某些字段
-func (this *MongoCollection) DeleteComponentField(entityId interface{}, componentName string, fieldName ...string) error {
+func (this *MongoCollection) DeleteComponentField(entityKey interface{}, componentName string, fieldName ...string) error {
 	if len(fieldName) == 0 {
 		return nil
 	}
@@ -141,7 +141,7 @@ func (this *MongoCollection) DeleteComponentField(entityId interface{}, componen
 	for _, name := range fieldName {
 		fieldNames = append(fieldNames, bson.E{Key: componentName + "." + name})
 	}
-	result, updateErr := col.UpdateOne(context.Background(), bson.D{{this.uniqueId, entityId}},
+	result, updateErr := col.UpdateOne(context.Background(), bson.D{{this.uniqueId, entityKey}},
 		bson.D{{"$unset", fieldNames}})
 	if updateErr != nil {
 		return updateErr

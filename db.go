@@ -3,25 +3,25 @@ package gentity
 // Entity的数据库接口
 type EntityDb interface {
 	// 根据id查找数据
-	FindEntityById(entityId interface{}, data interface{}) (bool, error)
+	FindEntityById(entityKey interface{}, data interface{}) (bool, error)
 
 	// 新建Entity(insert)
-	InsertEntity(entityId interface{}, entityData interface{}) (err error, isDuplicateKey bool)
+	InsertEntity(entityKey interface{}, entityData interface{}) (err error, isDuplicateKey bool)
 
-	// 保存Entity数据(update entity by entityId)
-	SaveEntity(entityId interface{}, entityData interface{}) error
+	// 保存Entity数据(update entity by entityKey)
+	SaveEntity(entityKey interface{}, entityData interface{}) error
 
 	// 保存1个组件(update entity's component)
-	SaveComponent(entityId interface{}, componentName string, componentData interface{}) error
+	SaveComponent(entityKey interface{}, componentName string, componentData interface{}) error
 
 	// 批量保存组件(update entity's components...)
-	SaveComponents(entityId interface{}, components map[string]interface{}) error
+	SaveComponents(entityKey interface{}, components map[string]interface{}) error
 
 	// 保存1个组件的一个字段(update entity's component.field)
-	SaveComponentField(entityId interface{}, componentName string, fieldName string, fieldData interface{}) error
+	SaveComponentField(entityKey interface{}, componentName string, fieldName string, fieldData interface{}) error
 
 	// 删除1个组件的某些字段
-	DeleteComponentField(entityId interface{}, componentName string, fieldName ...string) error
+	DeleteComponentField(entityKey interface{}, componentName string, fieldName ...string) error
 	// TODO:需要一个有容量限制的列表接口,用于邮件或者离线操作之类的接口
 }
 

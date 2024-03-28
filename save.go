@@ -14,18 +14,18 @@ func GetComponentSaveData(component Component) (interface{}, error) {
 }
 
 // 把组件的修改数据保存到缓存
-func SaveComponentChangedDataToCache(kvCache KvCache, cacheKeyPrefix string, component Component) {
+func SaveComponentChangedDataToCache(kvCache KvCache, cacheKeyPrefix string, entityKey interface{}, component Component) {
 	structCache := GetSaveableStruct(reflect.TypeOf(component))
 	if structCache == nil {
 		return
 	}
 	if structCache.IsSingleField() {
-		cacheKey := GetEntityComponentCacheKey(cacheKeyPrefix, component.GetEntity().GetId(), component.GetName())
+		cacheKey := GetEntityComponentCacheKey(cacheKeyPrefix, entityKey, component.GetName())
 		SaveChangedDataToCache(kvCache, component, cacheKey)
 	} else {
 		reflectVal := reflect.ValueOf(component).Elem()
 		for _, fieldCache := range structCache.Children {
-			cacheKey := GetEntityComponentChildCacheKey(cacheKeyPrefix, component.GetEntity().GetId(), component.GetName(), fieldCache.Name)
+			cacheKey := GetEntityComponentChildCacheKey(cacheKeyPrefix, entityKey, component.GetName(), fieldCache.Name)
 			val := reflectVal.Field(fieldCache.FieldIndex)
 			if val.IsNil() {
 				_, err := kvCache.Del(cacheKey)
@@ -194,14 +194,14 @@ func SaveChangedDataToCache(kvCache KvCache, obj interface{}, cacheKeyName strin
 // Entity的变化数据保存到数据库
 //
 //	key为entity.GetId()
-func SaveEntityChangedDataToDb(entityDb EntityDb, entity Entity, kvCache KvCache, removeCacheAfterSaveDb bool) error {
-	return SaveEntityChangedDataToDbByKey(entityDb, entity, entity.GetId(), kvCache, removeCacheAfterSaveDb)
+func SaveEntityChangedDataToDb(entityDb EntityDb, entity Entity, kvCache KvCache, removeCacheAfterSaveDb bool, cachePrefix string) error {
+	return SaveEntityChangedDataToDbByKey(entityDb, entity, entity.GetId(), kvCache, removeCacheAfterSaveDb, cachePrefix)
 }
 
 // Entity的变化数据保存到数据库
 //
 //	指定key
-func SaveEntityChangedDataToDbByKey(entityDb EntityDb, entity Entity, entityKey interface{}, kvCache KvCache, removeCacheAfterSaveDb bool) error {
+func SaveEntityChangedDataToDbByKey(entityDb EntityDb, entity Entity, entityKey interface{}, kvCache KvCache, removeCacheAfterSaveDb bool, cachePrefix string) error {
 	changedDatas := make(map[string]interface{})
 	var saved []Saveable
 	var delKeys []string
@@ -225,7 +225,7 @@ func SaveEntityChangedDataToDbByKey(entityDb EntityDb, entity Entity, entityKey 
 				// 使用protobuf存mongodb时,mongodb默认会把字段名转成小写,因为protobuf没设置bson tag
 				changedDatas[component.GetNameLower()] = saveData
 				if removeCacheAfterSaveDb {
-					delKeys = append(delKeys, GetEntityComponentCacheKey("p", entityKey, component.GetName()))
+					delKeys = append(delKeys, GetEntityComponentCacheKey(cachePrefix, entityKey, component.GetName()))
 				}
 				saved = append(saved, saveable)
 				GetLogger().Debug("SaveDb %v %v", entityKey, component.GetName())
@@ -253,7 +253,7 @@ func SaveEntityChangedDataToDbByKey(entityDb EntityDb, entity Entity, entityKey 
 					}
 					changedDatas[childName] = childSaveData
 					if removeCacheAfterSaveDb {
-						delKeys = append(delKeys, GetEntityComponentChildCacheKey("p", entityKey, component.GetName(), fieldCache.Name))
+						delKeys = append(delKeys, GetEntityComponentChildCacheKey(cachePrefix, entityKey, component.GetName(), fieldCache.Name))
 					}
 					saved = append(saved, saveable)
 					GetLogger().Debug("SaveDb %v %v.%v", entityKey, component.GetName(), childName)

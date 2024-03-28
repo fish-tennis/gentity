@@ -128,7 +128,7 @@ func TestDbCache(t *testing.T) {
 
 	//time.Sleep(time.Second*3)
 	// 只会把修改过数据的组件更新到数据库
-	gentity.SaveEntityChangedDataToDb(playerDb, player1, kvCache, true)
+	gentity.SaveEntityChangedDataToDb(playerDb, player1, kvCache, true, "p")
 
 	loadData := &pb.PlayerData{}
 	playerDb.FindEntityById(player1.Id, loadData)
@@ -170,7 +170,7 @@ func TestFixDataFromCache(t *testing.T) {
 	// 上面player1的修改数据之保存到了缓存,并没有保存到数据库
 	// 所以这里模拟了player1的修改数据没保存到数据库的情景
 	// 调用FixEntityDataFromCache,将会把缓存里的数据同步到数据库
-	gentity.FixEntityDataFromCache(fixPlayer, playerDb, kvCache, "p")
+	gentity.FixEntityDataFromCache(fixPlayer, playerDb, kvCache, "p", fixPlayer.GetId())
 
 	loadData := &pb.PlayerData{}
 	playerDb.FindEntityById(player1.Id, loadData)

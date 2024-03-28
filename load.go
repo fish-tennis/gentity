@@ -271,14 +271,14 @@ func LoadFromCache(obj interface{}, kvCache KvCache, cacheKey string) (bool, err
 
 // 根据缓存数据,修复数据
 // 如:服务器crash时,缓存数据没来得及保存到数据库,服务器重启后读取缓存中的数据,保存到数据库,防止数据回档
-func FixEntityDataFromCache(entity Entity, db EntityDb, kvCache KvCache, cacheKeyPrefix string) {
+func FixEntityDataFromCache(entity Entity, db EntityDb, kvCache KvCache, cacheKeyPrefix string, entityKey interface{}) {
 	entity.RangeComponent(func(component Component) bool {
 		structCache := GetSaveableStruct(reflect.TypeOf(component))
 		if structCache == nil {
 			return true
 		}
 		if structCache.IsSingleField() {
-			cacheKey := GetEntityComponentCacheKey(cacheKeyPrefix, entity.GetId(), component.GetName())
+			cacheKey := GetEntityComponentCacheKey(cacheKeyPrefix, entityKey, component.GetName())
 			hasCache, err := LoadFromCache(component, kvCache, cacheKey)
 			if !hasCache {
 				return true
@@ -289,12 +289,12 @@ func FixEntityDataFromCache(entity Entity, db EntityDb, kvCache KvCache, cacheKe
 			}
 			saveData, err := GetComponentSaveData(component)
 			if err != nil {
-				GetLogger().Error("%v Save %v err %v", entity.GetId(), component.GetName(), err.Error())
+				GetLogger().Error("%v Save %v err %v", entityKey, component.GetName(), err.Error())
 				return true
 			}
-			saveDbErr := db.SaveComponent(entity.GetId(), component.GetNameLower(), saveData)
+			saveDbErr := db.SaveComponent(entityKey, component.GetNameLower(), saveData)
 			if saveDbErr != nil {
-				GetLogger().Error("%v SaveDb %v err %v", entity.GetId(), component.GetNameLower(), saveDbErr.Error())
+				GetLogger().Error("%v SaveDb %v err %v", entityKey, component.GetNameLower(), saveDbErr.Error())
 				return true
 			}
 			GetLogger().Info("%v -> %v", cacheKey, component.GetNameLower())
@@ -314,7 +314,7 @@ func FixEntityDataFromCache(entity Entity, db EntityDb, kvCache KvCache, cacheKe
 					GetLogger().Debug("new %v", fieldCache.Name)
 				}
 				fieldInterface := val.Interface()
-				cacheKey := GetEntityComponentChildCacheKey(cacheKeyPrefix, entity.GetId(), component.GetName(), fieldCache.Name)
+				cacheKey := GetEntityComponentChildCacheKey(cacheKeyPrefix, entityKey, component.GetName(), fieldCache.Name)
 				hasCache, err := LoadFromCache(fieldInterface, kvCache, cacheKey)
 				if !hasCache {
 					return true
@@ -326,13 +326,13 @@ func FixEntityDataFromCache(entity Entity, db EntityDb, kvCache KvCache, cacheKe
 				GetLogger().Debug("%v", fieldInterface)
 				saveData, err := GetSaveData(fieldInterface, component.GetNameLower())
 				if err != nil {
-					GetLogger().Error("%v Save %v.%v err %v", entity.GetId(), component.GetName(), fieldCache.Name, err.Error())
+					GetLogger().Error("%v Save %v.%v err %v", entityKey, component.GetName(), fieldCache.Name, err.Error())
 					return true
 				}
 				GetLogger().Debug("%v", saveData)
-				saveDbErr := db.SaveComponentField(entity.GetId(), component.GetNameLower(), fieldCache.Name, saveData)
+				saveDbErr := db.SaveComponentField(entityKey, component.GetNameLower(), fieldCache.Name, saveData)
 				if saveDbErr != nil {
-					GetLogger().Error("%v SaveDb %v.%v err %v", entity.GetId(), component.GetNameLower(), fieldCache.Name, saveDbErr.Error())
+					GetLogger().Error("%v SaveDb %v.%v err %v", entityKey, component.GetNameLower(), fieldCache.Name, saveDbErr.Error())
 					return true
 				}
 				GetLogger().Info("%v -> %v.%v", cacheKey, component.GetNameLower(), fieldCache.Name)

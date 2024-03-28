@@ -83,9 +83,9 @@ func (this *BaseEntity) AddComponent(component Component, sourceData interface{}
 	this.components = append(this.components, component)
 }
 
-func (this *BaseEntity) SaveCache(kvCache KvCache, cacheKeyPrefix string) error {
+func (this *BaseEntity) SaveCache(kvCache KvCache, cacheKeyPrefix string, entityKey interface{}) error {
 	for _, component := range this.components {
-		SaveComponentChangedDataToCache(kvCache, cacheKeyPrefix, component)
+		SaveComponentChangedDataToCache(kvCache, cacheKeyPrefix, entityKey, component)
 	}
 	return nil
 }
