@@ -4,6 +4,8 @@ import (
 	"google.golang.org/protobuf/proto"
 	"reflect"
 	"strings"
+	"strconv"
+	"github.com/fish-tennis/gentity/util"
 )
 
 // reflect.Value -> interface{}
@@ -128,4 +130,49 @@ func ConvertProtoToMap(protoMessage proto.Message) map[string]interface{} {
 		stringMap[strings.ToLower(sf.Name)] = v
 	}
 	return stringMap
+}
+
+func ConvertStringToRealType(typ reflect.Type, v string) interface{} {
+	switch typ.Kind() {
+	case reflect.Int:
+		return util.Atoi(v)
+	case reflect.Int8:
+		return int8(util.Atoi(v))
+	case reflect.Int16:
+		return int16(util.Atoi(v))
+	case reflect.Int32:
+		return int32(util.Atoi(v))
+	case reflect.Int64:
+		return util.Atoi64(v)
+	case reflect.Uint:
+		return uint(util.Atou(v))
+	case reflect.Uint8:
+		return uint8(util.Atou(v))
+	case reflect.Uint16:
+		return uint16(util.Atou(v))
+	case reflect.Uint32:
+		return uint32(util.Atou(v))
+	case reflect.Uint64:
+		return util.Atou(v)
+	case reflect.Float32:
+		f, _ := strconv.ParseFloat(v, 64)
+		return float32(f)
+	case reflect.Float64:
+		f, _ := strconv.ParseFloat(v, 64)
+		return f
+	case reflect.String:
+		return v
+	case reflect.Interface, reflect.Ptr:
+		newProto := reflect.New(typ.Elem())
+		if protoMessage, ok := newProto.Interface().(proto.Message); ok {
+			protoErr := proto.Unmarshal([]byte(v), protoMessage)
+			if protoErr != nil {
+				GetLogger().Error("proto err:%v", protoErr.Error())
+				return protoErr
+			}
+			return protoMessage
+		}
+	}
+	GetLogger().Error("unsupport type:%v", typ.Kind())
+	return nil
 }
