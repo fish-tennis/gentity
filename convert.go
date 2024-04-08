@@ -1,11 +1,11 @@
 package gentity
 
 import (
+	"github.com/fish-tennis/gentity/util"
 	"google.golang.org/protobuf/proto"
 	"reflect"
-	"strings"
 	"strconv"
-	"github.com/fish-tennis/gentity/util"
+	"strings"
 )
 
 // reflect.Value -> interface{}
@@ -19,6 +19,8 @@ func ConvertValueToInterface(srcType, dstType reflect.Type, v reflect.Value) int
 		return ConvertInterfaceToRealType(dstType, v.Float())
 	case reflect.String:
 		return ConvertInterfaceToRealType(dstType, v.String())
+	case reflect.Bool:
+		return ConvertInterfaceToRealType(dstType, v.Bool())
 	case reflect.Interface, reflect.Ptr:
 		return ConvertInterfaceToRealType(dstType, v.Interface())
 	case reflect.Slice:
@@ -27,8 +29,9 @@ func ConvertValueToInterface(srcType, dstType reflect.Type, v reflect.Value) int
 		} else {
 			return ConvertInterfaceToRealType(dstType, v.Interface())
 		}
+	default:
+		GetLogger().Error("unsupported type:%v", srcType.Kind())
 	}
-	GetLogger().Error("unsupport type:%v", srcType.Kind())
 	return nil
 }
 
@@ -42,8 +45,9 @@ func ConvertValueToInt(srcType reflect.Type, v reflect.Value) int64 {
 	case reflect.Float32, reflect.Float64:
 		// NOTE:有精度问题
 		return int64(v.Float())
+	default:
+		GetLogger().Error("unsupported type:%v", srcType.Kind())
 	}
-	GetLogger().Error("unsupport type:%v", srcType.Kind())
 	return 0
 }
 
@@ -76,6 +80,8 @@ func ConvertInterfaceToRealType(typ reflect.Type, v interface{}) interface{} {
 		return v.(float64)
 	case reflect.String:
 		return v
+	case reflect.Bool:
+		return v.(bool)
 	case reflect.Ptr, reflect.Slice:
 		if bytes, ok := v.([]byte); ok {
 			newProto := reflect.New(typ.Elem())
@@ -87,8 +93,9 @@ func ConvertInterfaceToRealType(typ reflect.Type, v interface{}) interface{} {
 				return protoMessage
 			}
 		}
+	default:
+		GetLogger().Error("unsupported type:%v", typ.Kind())
 	}
-	GetLogger().Error("unsupport type:%v", typ.Kind())
 	return nil
 }
 
@@ -121,6 +128,10 @@ func ConvertProtoToMap(protoMessage proto.Message) map[string]interface{} {
 			v = fieldVal.Interface()
 		case reflect.String:
 			v = fieldVal.Interface()
+		case reflect.Bool:
+			v = fieldVal.Interface()
+		default:
+			GetLogger().Error("unsupported type:%v", fieldVal.Kind())
 		}
 		if v == nil {
 			GetLogger().Debug("%v %v nil", sf.Name, fieldVal.Kind())
@@ -155,13 +166,15 @@ func ConvertStringToRealType(typ reflect.Type, v string) interface{} {
 	case reflect.Uint64:
 		return util.Atou(v)
 	case reflect.Float32:
-		f, _ := strconv.ParseFloat(v, 64)
+		f, _ := strconv.ParseFloat(v, 32)
 		return float32(f)
 	case reflect.Float64:
 		f, _ := strconv.ParseFloat(v, 64)
 		return f
 	case reflect.String:
 		return v
+	case reflect.Bool:
+		return v == "true" || v == "1"
 	case reflect.Interface, reflect.Ptr:
 		newProto := reflect.New(typ.Elem())
 		if protoMessage, ok := newProto.Interface().(proto.Message); ok {
@@ -172,7 +185,8 @@ func ConvertStringToRealType(typ reflect.Type, v string) interface{} {
 			}
 			return protoMessage
 		}
+	default:
+		GetLogger().Error("unsupported type:%v", typ.Kind())
 	}
-	GetLogger().Error("unsupport type:%v", typ.Kind())
 	return nil
 }

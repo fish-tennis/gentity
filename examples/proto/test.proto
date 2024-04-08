@@ -33,4 +33,5 @@ message PlayerData {
   BaseInfo baseInfo = 5;
   QuestSaveData quest = 6;
   map<string,bytes> interfaceMap = 7; // 动态数据
+  bool isGM = 8;
 }
