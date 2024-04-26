@@ -4,11 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/fish-tennis/gentity/util"
 	"github.com/go-redis/redis/v8"
 	"google.golang.org/protobuf/proto"
 	"reflect"
-	"strconv"
 	"time"
 )
 
@@ -153,70 +151,6 @@ func (this *RedisCache) GetProto(key string, value proto.Message) error {
 	}
 	err = proto.Unmarshal([]byte(str), value)
 	return err
-}
-
-func convertValueToString(val reflect.Value) (string, error) {
-	switch val.Kind() {
-	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		return strconv.Itoa(int(val.Int())), nil
-	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-		return strconv.FormatUint(val.Uint(), 10), nil
-	case reflect.Float32, reflect.Float64:
-		return strconv.FormatFloat(val.Float(), 'f', 2, 64), nil
-	case reflect.String:
-		return val.String(), nil
-	case reflect.Interface:
-		if !val.CanInterface() {
-			GetLogger().Error("unsupport type:%v", val.Kind())
-			return "", errors.New(fmt.Sprintf("unsupport type:%v", val.Kind()))
-		}
-		return util.ToString(val.Interface())
-	default:
-		GetLogger().Error("unsupport type:%v", val.Kind())
-		return "", errors.New(fmt.Sprintf("unsupport type:%v", val.Kind()))
-	}
-}
-
-func convertValueToStringOrInterface(val reflect.Value) (interface{}, error) {
-	switch val.Kind() {
-	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
-		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64,
-		reflect.Float32, reflect.Float64,
-		reflect.String:
-		return convertValueToString(val)
-	case reflect.Interface, reflect.Ptr:
-		if !val.IsNil() {
-			if !val.CanInterface() {
-				GetLogger().Error("unsupport type:%v", val.Kind())
-				return nil, errors.New(fmt.Sprintf("unsupport type:%v", val.Kind()))
-			}
-			i := val.Interface()
-			// protobuf格式
-			if protoMessage, ok := i.(proto.Message); ok {
-				bytes, protoErr := proto.Marshal(protoMessage)
-				if protoErr != nil {
-					GetLogger().Error("convert proto err:%v", protoErr.Error())
-					return nil, protoErr
-				}
-				return bytes, nil
-			}
-			// Saveable格式
-			if valueSaveable, ok := i.(Saveable); ok {
-				valueSaveData, valueSaveErr := GetSaveData(valueSaveable, "")
-				if valueSaveErr != nil {
-					GetLogger().Error("convert Saveabl err:%v", valueSaveErr.Error())
-					return nil, valueSaveErr
-				}
-				return valueSaveData, nil
-			}
-			return i, nil
-		}
-	default:
-		GetLogger().Error("unsupport type:%v", val.Kind())
-		return nil, errors.New(fmt.Sprintf("unsupport type:%v", val.Kind()))
-	}
-	GetLogger().Error("unsupport type:%v", val.Kind())
-	return nil, errors.New(fmt.Sprintf("unsupport type:%v", val.Kind()))
 }
 
 // 检查redis返回的error是否是异常

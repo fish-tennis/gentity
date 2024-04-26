@@ -8,6 +8,7 @@ import (
 	"github.com/go-redis/redis/v8"
 	"google.golang.org/protobuf/proto"
 	"reflect"
+	"strings"
 )
 
 // 加载数据
@@ -160,12 +161,12 @@ func LoadFromCache(obj interface{}, kvCache KvCache, cacheKey string) (bool, err
 	if structCache == nil {
 		return false, nil
 	}
-	cacheType, err := kvCache.Type(cacheKey)
-	if err == redis.Nil || cacheType == "" || cacheType == "none" {
-		return false, nil
-	}
 	reflectVal := reflect.ValueOf(obj).Elem()
 	if structCache.IsSingleField() {
+		cacheType, err := kvCache.Type(cacheKey)
+		if err == redis.Nil || cacheType == "" || cacheType == "none" {
+			return false, nil
+		}
 		fieldCache := structCache.Field
 		val := reflectVal.Field(fieldCache.FieldIndex)
 		if cacheType == "string" {
@@ -292,12 +293,12 @@ func FixEntityDataFromCache(entity Entity, db EntityDb, kvCache KvCache, cacheKe
 				GetLogger().Error("%v Save %v err %v", entityKey, component.GetName(), err.Error())
 				return true
 			}
-			saveDbErr := db.SaveComponent(entityKey, component.GetNameLower(), saveData)
+			saveDbErr := db.SaveComponent(entityKey, strings.ToLower(component.GetName()), saveData)
 			if saveDbErr != nil {
-				GetLogger().Error("%v SaveDb %v err %v", entityKey, component.GetNameLower(), saveDbErr.Error())
+				GetLogger().Error("%v SaveDb %v err %v", entityKey, strings.ToLower(component.GetName()), saveDbErr.Error())
 				return true
 			}
-			GetLogger().Info("%v -> %v", cacheKey, component.GetNameLower())
+			GetLogger().Info("%v -> %v", cacheKey, strings.ToLower(component.GetName()))
 			kvCache.Del(cacheKey)
 			GetLogger().Info("RemoveCache %v", cacheKey)
 		} else {
@@ -324,18 +325,18 @@ func FixEntityDataFromCache(entity Entity, db EntityDb, kvCache KvCache, cacheKe
 					return true
 				}
 				GetLogger().Debug("%v", fieldInterface)
-				saveData, err := GetSaveData(fieldInterface, component.GetNameLower())
+				saveData, err := GetSaveData(fieldInterface, strings.ToLower(component.GetName()))
 				if err != nil {
 					GetLogger().Error("%v Save %v.%v err %v", entityKey, component.GetName(), fieldCache.Name, err.Error())
 					return true
 				}
 				GetLogger().Debug("%v", saveData)
-				saveDbErr := db.SaveComponentField(entityKey, component.GetNameLower(), fieldCache.Name, saveData)
+				saveDbErr := db.SaveComponentField(entityKey, strings.ToLower(component.GetName()), fieldCache.Name, saveData)
 				if saveDbErr != nil {
-					GetLogger().Error("%v SaveDb %v.%v err %v", entityKey, component.GetNameLower(), fieldCache.Name, saveDbErr.Error())
+					GetLogger().Error("%v SaveDb %v.%v err %v", entityKey, strings.ToLower(component.GetName()), fieldCache.Name, saveDbErr.Error())
 					return true
 				}
-				GetLogger().Info("%v -> %v.%v", cacheKey, component.GetNameLower(), fieldCache.Name)
+				GetLogger().Info("%v -> %v.%v", cacheKey, strings.ToLower(component.GetName()), fieldCache.Name)
 				kvCache.Del(cacheKey)
 				GetLogger().Info("RemoveCache %v", cacheKey)
 			}

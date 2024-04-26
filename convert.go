@@ -1,6 +1,8 @@
 package gentity
 
 import (
+	"errors"
+	"fmt"
 	"github.com/fish-tennis/gentity/util"
 	"google.golang.org/protobuf/proto"
 	"reflect"
@@ -93,9 +95,8 @@ func ConvertInterfaceToRealType(typ reflect.Type, v interface{}) interface{} {
 				return protoMessage
 			}
 		}
-	default:
-		GetLogger().Error("unsupported type:%v", typ.Kind())
 	}
+	GetLogger().Error("unsupported type:%v", typ.Kind())
 	return nil
 }
 
@@ -138,7 +139,11 @@ func ConvertProtoToMap(protoMessage proto.Message) map[string]interface{} {
 			continue
 		}
 		// 兼容mongodb,字段名小写
-		stringMap[strings.ToLower(sf.Name)] = v
+		if _saveableStructsMap.useLowerName {
+			stringMap[strings.ToLower(sf.Name)] = v
+		} else {
+			stringMap[sf.Name] = v
+		}
 	}
 	return stringMap
 }
@@ -175,6 +180,11 @@ func ConvertStringToRealType(typ reflect.Type, v string) interface{} {
 		return v
 	case reflect.Bool:
 		return v == "true" || v == "1"
+	case reflect.Slice:
+		// []byte
+		if typ.Elem().Kind() == reflect.Uint8 {
+			return []byte(v)
+		}
 	case reflect.Interface, reflect.Ptr:
 		newProto := reflect.New(typ.Elem())
 		if protoMessage, ok := newProto.Interface().(proto.Message); ok {
@@ -189,4 +199,68 @@ func ConvertStringToRealType(typ reflect.Type, v string) interface{} {
 		GetLogger().Error("unsupported type:%v", typ.Kind())
 	}
 	return nil
+}
+
+func convertValueToString(val reflect.Value) (string, error) {
+	switch val.Kind() {
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		return strconv.Itoa(int(val.Int())), nil
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		return strconv.FormatUint(val.Uint(), 10), nil
+	case reflect.Float32, reflect.Float64:
+		return strconv.FormatFloat(val.Float(), 'f', 2, 64), nil
+	case reflect.String:
+		return val.String(), nil
+	case reflect.Interface:
+		if !val.CanInterface() {
+			GetLogger().Error("unsupport type:%v", val.Kind())
+			return "", errors.New(fmt.Sprintf("unsupport type:%v", val.Kind()))
+		}
+		return util.ToString(val.Interface())
+	default:
+		GetLogger().Error("unsupport type:%v", val.Kind())
+		return "", errors.New(fmt.Sprintf("unsupport type:%v", val.Kind()))
+	}
+}
+
+func convertValueToStringOrInterface(val reflect.Value) (interface{}, error) {
+	switch val.Kind() {
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64,
+		reflect.Float32, reflect.Float64,
+		reflect.String:
+		return convertValueToString(val)
+	case reflect.Interface, reflect.Ptr:
+		if !val.IsNil() {
+			if !val.CanInterface() {
+				GetLogger().Error("unsupport type:%v", val.Kind())
+				return nil, errors.New(fmt.Sprintf("unsupport type:%v", val.Kind()))
+			}
+			i := val.Interface()
+			// protobuf格式
+			if protoMessage, ok := i.(proto.Message); ok {
+				bytes, protoErr := proto.Marshal(protoMessage)
+				if protoErr != nil {
+					GetLogger().Error("convert proto err:%v", protoErr.Error())
+					return nil, protoErr
+				}
+				return bytes, nil
+			}
+			// Saveable格式
+			if valueSaveable, ok := i.(Saveable); ok {
+				valueSaveData, valueSaveErr := GetSaveData(valueSaveable, "")
+				if valueSaveErr != nil {
+					GetLogger().Error("convert Saveabl err:%v", valueSaveErr.Error())
+					return nil, valueSaveErr
+				}
+				return valueSaveData, nil
+			}
+			return i, nil
+		}
+	default:
+		GetLogger().Error("unsupport type:%v", val.Kind())
+		return nil, errors.New(fmt.Sprintf("unsupport type:%v", val.Kind()))
+	}
+	GetLogger().Error("unsupport type:%v", val.Kind())
+	return nil, errors.New(fmt.Sprintf("unsupport type:%v", val.Kind()))
 }

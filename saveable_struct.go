@@ -34,6 +34,7 @@ type SaveableField struct {
 
 type safeSaveableStructsMap struct {
 	// 是否使用全小写
+	// gserver使用mongodb,默认使用全小写,以便于redis和mongodb一致
 	useLowerName bool
 	m map[reflect.Type]*SaveableStruct
 	// 如果在初始化的时候把所有结构缓存的话,这个读写锁是可以去掉的
@@ -102,8 +103,10 @@ func GetSaveableStruct(reflectType reflect.Type) *SaveableStruct {
 			GetLogger().Error("%v.%v field must export(start with upper char)", reflectType.Name(), fieldStruct.Name)
 			continue
 		}
-		// 默认使用字段名的全小写
-		name := strings.ToLower(fieldStruct.Name)
+		name := fieldStruct.Name
+		if _saveableStructsMap.useLowerName {
+			name = strings.ToLower(fieldStruct.Name)
+		}
 		for _,n := range dbSettings {
 			if n != "" && n != "plain" {
 				// 自动转全小写
@@ -146,7 +149,10 @@ func GetSaveableStruct(reflectType reflect.Type) *SaveableStruct {
 			continue
 		}
 		// 默认使用字段名的全小写
-		name := strings.ToLower(fieldStruct.Name)
+		name := fieldStruct.Name
+		if _saveableStructsMap.useLowerName {
+			name = strings.ToLower(fieldStruct.Name)
+		}
 		dbSettings := strings.Split(dbSetting, ";")
 		for _,n := range dbSettings {
 			if n != "" {

@@ -11,6 +11,28 @@ type Saveable interface {
 }
 
 // 保存数据作为一个整体,只要一个字段修改了,整个数据都需要缓存
+//
+// examples:
+//
+//	type ProteTest struct {
+//	  BaseDirtyMark
+//	  Data *pb.Data `db:"ProteTest"`
+//	}
+//
+//	type MapTest struct {
+//	  BaseDirtyMark
+//	  Data map[int32]*pb.Data `db:"MapTest"`
+//	}
+//
+//	type MapTest struct {
+//	  BaseDirtyMark
+//	  Data map[int32]string `db:"MapTest"`
+//	}
+//
+//	type SliceTest struct {
+//	  BaseDirtyMark
+//	  Data []*pb.Data `db:"SliceTest"`
+//	}
 type DirtyMark interface {
 	// 需要保存的数据是否修改了
 	IsDirty() bool
@@ -22,18 +44,22 @@ type DirtyMark interface {
 
 // 同时需要保存数据库和缓存的接口
 // Saveable:
-//   保存数据库的频率低,比如玩家下线时才会保存数据库,那么Saveable只会在上线期间记录有没有改变过就可以
+//
+//	保存数据库的频率低,比如玩家下线时才会保存数据库,那么Saveable只会在上线期间记录有没有改变过就可以
+//
 // DirtyMark:
-//   缓存的保存频率高,比如玩家每一次操作都可能引起缓存的更新
+//
+//	缓存的保存频率高,比如玩家每一次操作都可能引起缓存的更新
 type SaveableDirtyMark interface {
 	Saveable
 	DirtyMark
 }
 
 type BaseDirtyMark struct {
-	// 数据是否修改过
+	// 数据是否修改过,用于保存数据库的数据修改标记
 	isChanged bool
-	isDirty   bool
+	// 脏数据标记,用于缓存的数据修改标记
+	isDirty bool
 }
 
 // 数据是否改变过
@@ -60,6 +86,18 @@ func (this *BaseDirtyMark) ResetDirty() {
 
 // map格式的保存数据
 // 第一次有数据修改时,会把整体数据缓存一次,之后只保存修改过的项(增量更新)
+//
+// examples:
+//
+//	type MapTest struct {
+//	  BaseMapDirtyMark
+//	  Data map[int32]*pb.Data `db:"MapTest"`
+//	}
+//
+//	type MapTest struct {
+//	  BaseMapDirtyMark
+//	  Data map[int32]string `db:"MapTest"`
+//	}
 type MapDirtyMark interface {
 	// 需要保存的数据是否修改了
 	IsDirty() bool
