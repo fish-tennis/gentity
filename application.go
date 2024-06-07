@@ -2,6 +2,7 @@ package gentity
 
 import (
 	"context"
+	"github.com/fish-tennis/gnet"
 	"sync"
 )
 
@@ -35,6 +36,7 @@ type Application interface {
 
 // Application回调接口
 type ApplicationHook interface {
+	OnRegisterServerHandler(serverHandler gnet.ConnectionHandler)
 	OnApplicationInit(initArg interface{})
 	OnApplicationExit()
 }

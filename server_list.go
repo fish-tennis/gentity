@@ -2,6 +2,7 @@ package gentity
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"github.com/fish-tennis/gentity/util"
 	"github.com/fish-tennis/gnet"
@@ -27,16 +28,20 @@ type ServerList interface {
 	// 服务注册:上传本地服务器的信息
 	RegisterLocalServerInfo()
 
-	Send(serverId int32, cmd gnet.PacketCommand, message proto.Message) bool
+	// 发送proto packet
+	Send(serverId int32, cmd gnet.PacketCommand, message proto.Message, opts ...gnet.SendOption) bool
+
+	// 服务器之间的rpc调用,阻塞等待回复
+	Rpc(serverId int32, request gnet.Packet, reply proto.Message, opts ...gnet.SendOption) error
 }
 
 type BaseServerList struct {
 	// 缓存接口
-	cache               KvCache
+	cache KvCache
 	// bytes -> ServerInfo
 	serverInfoUnmarshal func(bytes []byte) ServerInfo
 	// ServerInfo -> bytes
-	serverInfoMarshal   func(info ServerInfo) []byte
+	serverInfoMarshal func(info ServerInfo) []byte
 	// 需要获取信息的服务器类型
 	fetchServerTypes []string
 	// 需要连接的服务器类型
@@ -51,9 +56,9 @@ type BaseServerList struct {
 	serverInfoTypeMapMutex sync.RWMutex
 	// 本地服务器信息
 	localServerInfo ServerInfo
-	// 已连接的服务器连接
-	connectedServerConnectors      map[int32]gnet.Connection // serverId-Connection
-	connectedServerConnectorsMutex sync.RWMutex
+	// 已连接的服务器
+	connectedServers      map[int32]gnet.Connection // serverId-Connection
+	connectedServersMutex sync.RWMutex
 	// 服务器连接创建函数,供外部扩展
 	serverConnectorFunc func(ctx context.Context, info ServerInfo) gnet.Connection
 	listUpdateHooks     []func(serverList map[string][]ServerInfo, oldServerList map[string][]ServerInfo)
@@ -61,10 +66,10 @@ type BaseServerList struct {
 
 func NewBaseServerList() *BaseServerList {
 	return &BaseServerList{
-		activeTimeout:             3 * 1000, // 默认3秒
-		serverInfos:               make(map[int32]ServerInfo),
-		connectedServerConnectors: make(map[int32]gnet.Connection),
-		serverInfoTypeMap:         make(map[string][]ServerInfo),
+		activeTimeout:     3 * 1000, // 默认3秒
+		serverInfos:       make(map[int32]ServerInfo),
+		connectedServers:  make(map[int32]gnet.Connection),
+		serverInfoTypeMap: make(map[string][]ServerInfo),
 	}
 }
 
@@ -142,35 +147,36 @@ func (this *BaseServerList) FindAndConnectServers(ctx context.Context) {
 
 	for _, info := range infoMap {
 		if util.HasString(this.connectServerTypes, info.GetServerType()) {
-			if this.localServerInfo.GetServerId() == info.GetServerId() {
-				continue
-			}
 			//// 目标服务器已经处于"不活跃"状态了
 			//if util.GetCurrentMS() - info.LastActiveTime > int64(this.activeTimeout) {
 			//	continue
 			//}
+			// 只连接Id>=自己的服务器,让每2个服务器之间只有一条链接
+			if info.GetServerId() < this.localServerInfo.GetServerId() {
+				continue
+			}
 			this.ConnectServer(ctx, info)
 		}
 	}
 }
 
-// 连接其他服务器
+// 连接其他服务器(包括自己),我方做为connector
 func (this *BaseServerList) ConnectServer(ctx context.Context, info ServerInfo) {
 	if info == nil || this.serverConnectorFunc == nil {
 		return
 	}
-	this.connectedServerConnectorsMutex.RLock()
-	_, ok := this.connectedServerConnectors[info.GetServerId()]
-	this.connectedServerConnectorsMutex.RUnlock()
+	this.connectedServersMutex.RLock()
+	_, ok := this.connectedServers[info.GetServerId()]
+	this.connectedServersMutex.RUnlock()
 	if ok {
 		return
 	}
 	serverConn := this.serverConnectorFunc(ctx, info)
 	if serverConn != nil {
 		serverConn.SetTag(info.GetServerId())
-		this.connectedServerConnectorsMutex.Lock()
-		this.connectedServerConnectors[info.GetServerId()] = serverConn
-		this.connectedServerConnectorsMutex.Unlock()
+		this.connectedServersMutex.Lock()
+		this.connectedServers[info.GetServerId()] = serverConn
+		this.connectedServersMutex.Unlock()
 		GetLogger().Info("ConnectServer %v, %v", info.GetServerId(), info.GetServerType())
 	} else {
 		GetLogger().Info("ConnectServerError %v, %v", info.GetServerId(), info.GetServerType())
@@ -203,10 +209,26 @@ func (this *BaseServerList) SetLocalServerInfo(info ServerInfo) {
 
 // 服务器连接断开了
 func (this *BaseServerList) OnServerConnectorDisconnect(serverId int32) {
-	this.connectedServerConnectorsMutex.Lock()
-	delete(this.connectedServerConnectors, serverId)
-	this.connectedServerConnectorsMutex.Unlock()
+	this.connectedServersMutex.Lock()
+	delete(this.connectedServers, serverId)
+	this.connectedServersMutex.Unlock()
 	GetLogger().Debug("DisconnectServer %v", serverId)
+}
+
+// 其他服务器连接上,我方作为listener
+func (this *BaseServerList) OnServerConnected(serverId int32, connection gnet.Connection) {
+	connection.SetTag(serverId)
+	// 当自己连接自己时,会产生2条相同serverId的连接:connector和accept connection
+	// 这里只会保存其中一个 TODO: 怎么处理?
+	//// 只保留connector的连接信息
+	//if serverId == this.localServerInfo.GetServerId() && !connection.IsConnector() {
+	//	GetLogger().Debug("Ignore self accept %v", serverId)
+	//	return
+	//}
+	this.connectedServersMutex.Lock()
+	this.connectedServers[serverId] = connection
+	this.connectedServersMutex.Unlock()
+	GetLogger().Debug("OnServerConnected %v", serverId)
 }
 
 // 设置要获取的服务器类型
@@ -240,28 +262,36 @@ func (this *BaseServerList) GetServersByType(serverType string) []ServerInfo {
 }
 
 // 获取服务器的连接
-func (this *BaseServerList) GetServerConnector(serverId int32) gnet.Connection {
-	this.connectedServerConnectorsMutex.RLock()
-	connection, _ := this.connectedServerConnectors[serverId]
-	this.connectedServerConnectorsMutex.RUnlock()
+func (this *BaseServerList) GetServerConnection(serverId int32) gnet.Connection {
+	this.connectedServersMutex.RLock()
+	connection, _ := this.connectedServers[serverId]
+	this.connectedServersMutex.RUnlock()
 	return connection
 }
 
 // 发消息给另一个服务器
-func (this *BaseServerList) Send(serverId int32, cmd gnet.PacketCommand, message proto.Message) bool {
-	connection := this.GetServerConnector(serverId)
+func (this *BaseServerList) Send(serverId int32, cmd gnet.PacketCommand, message proto.Message, opts ...gnet.SendOption) bool {
+	connection := this.GetServerConnection(serverId)
 	if connection != nil && connection.IsConnected() {
-		return connection.Send(cmd, message)
+		return connection.Send(cmd, message, opts...)
 	}
 	return false
 }
 
-func (this *BaseServerList) SendPacket(serverId int32, packet gnet.Packet) bool {
-	connection := this.GetServerConnector(serverId)
+func (this *BaseServerList) SendPacket(serverId int32, packet gnet.Packet, opts ...gnet.SendOption) bool {
+	connection := this.GetServerConnection(serverId)
 	if connection != nil && connection.IsConnected() {
-		return connection.SendPacket(packet)
+		return connection.SendPacket(packet, opts...)
 	}
 	return false
+}
+
+func (this *BaseServerList) Rpc(serverId int32, request gnet.Packet, reply proto.Message, opts ...gnet.SendOption) error {
+	connection := this.GetServerConnection(serverId)
+	if connection != nil && connection.IsConnected() {
+		return connection.Rpc(request, reply, opts...)
+	}
+	return errors.New("not conncted")
 }
 
 // 添加服务器列表更新回调
