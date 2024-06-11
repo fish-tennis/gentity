@@ -121,8 +121,8 @@ func (this *MongoCollection) SaveComponents(entityKey interface{}, components ma
 
 func (this *MongoCollection) SaveComponentField(entityKey interface{}, componentName string, fieldName string, fieldData interface{}) error {
 	col := this.mongoDatabase.Collection(this.collectionName)
-	// NOTE:如果player.componentName == null
-	// 直接更新player.componentName.fieldName会报错: Cannot create field 'fieldName' in element
+	// NOTE:如果player.ComponentName == null
+	// 直接更新player.ComponentName.fieldName会报错: Cannot create field 'fieldName' in element
 	_, updateErr := col.UpdateOne(context.Background(), bson.D{{this.uniqueId, entityKey}},
 		bson.D{{"$set", bson.D{{componentName + "." + fieldName, fieldData}}}})
 	if updateErr != nil {

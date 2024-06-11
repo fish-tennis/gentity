@@ -13,9 +13,9 @@ var _componentHandlerInfos = make(map[gnet.PacketCommand]*ComponentHandlerInfo)
 
 // 组件回调接口信息
 type ComponentHandlerInfo struct {
-	componentName string
-	method        reflect.Method
-	handler       func(c Component, m proto.Message)
+	ComponentName string
+	Method        reflect.Method
+	Handler       func(c Component, m proto.Message)
 }
 
 // 根据proto的命名规则和组件里消息回调的格式,通过反射自动生成消息的注册
@@ -47,19 +47,19 @@ func AutoRegisterComponentHandler(entity Entity, packetHandlerRegister gnet.Pack
 				continue
 			}
 			// 消息回调格式: func (this *Quest) OnFinishQuestReq(cmd PacketCommand, req *pb.FinishQuestReq)
-			methonArg1 := method.Type.In(1)
+			methodArg1 := method.Type.In(1)
 			// 参数1是消息号
-			if methonArg1.Name() != "PacketCommand" && methonArg1.Name() != "gnet.PacketCommand" {
+			if methodArg1.Name() != "PacketCommand" && methodArg1.Name() != "gnet.PacketCommand" {
 				continue
 			}
-			methonArg2 := method.Type.In(2)
+			methodArg2 := method.Type.In(2)
 			// 参数2是proto定义的消息体
-			if !methonArg2.Implements(reflect.TypeOf((*proto.Message)(nil)).Elem()) {
+			if !methodArg2.Implements(reflect.TypeOf((*proto.Message)(nil)).Elem()) {
 				continue
 			}
 			// 消息名,如: FinishQuestReq
 			// *pb.FinishQuestReq -> FinishQuestReq
-			messageName := methonArg2.String()[strings.LastIndex(methonArg2.String(), ".")+1:]
+			messageName := methodArg2.String()[strings.LastIndex(methodArg2.String(), ".")+1:]
 			// 客户端消息回调的函数名规则,如OnFinishQuestReq
 			if isClientMessage && method.Name != fmt.Sprintf("%v%v", clientHandlerPrefix, messageName) {
 				GetLogger().Debug("client methodName not match:%v", method.Name)
@@ -78,12 +78,12 @@ func AutoRegisterComponentHandler(entity Entity, packetHandlerRegister gnet.Pack
 			cmd := gnet.PacketCommand(messageId)
 			// 注册消息回调到组件上
 			_componentHandlerInfos[cmd] = &ComponentHandlerInfo{
-				componentName: component.GetName(),
-				method:        method,
+				ComponentName: component.GetName(),
+				Method:        method,
 			}
 			// 注册客户端消息
 			if isClientMessage && packetHandlerRegister != nil {
-				packetHandlerRegister.Register(cmd, nil, reflect.New(methonArg2.Elem()).Interface().(proto.Message))
+				packetHandlerRegister.Register(cmd, nil, reflect.New(methodArg2.Elem()).Interface().(proto.Message))
 			}
 			GetLogger().Debug("AutoRegister %v.%v %v client:%v", componentStructName, method.Name, messageId, isClientMessage)
 		}
@@ -94,8 +94,8 @@ func AutoRegisterComponentHandler(entity Entity, packetHandlerRegister gnet.Pack
 // 用于proto_code_gen工具自动生成的消息注册代码
 func RegisterProtoCodeGen(packetHandlerRegister gnet.PacketHandlerRegister, componentName string, cmd gnet.PacketCommand, protoMessage proto.Message, handler func(c Component, m proto.Message)) {
 	_componentHandlerInfos[cmd] = &ComponentHandlerInfo{
-		componentName: componentName,
-		handler:       handler,
+		ComponentName: componentName,
+		Handler:       handler,
 	}
 	packetHandlerRegister.Register(cmd, nil, protoMessage)
 }
@@ -107,13 +107,13 @@ func ProcessComponentHandler(entity Entity, cmd gnet.PacketCommand, message prot
 	// 先找组件接口
 	handlerInfo := _componentHandlerInfos[cmd]
 	if handlerInfo != nil {
-		component := entity.GetComponentByName(handlerInfo.componentName)
+		component := entity.GetComponentByName(handlerInfo.ComponentName)
 		if component != nil {
-			if handlerInfo.handler != nil {
-				handlerInfo.handler(component, message)
+			if handlerInfo.Handler != nil {
+				handlerInfo.Handler(component, message)
 			} else {
 				// 反射调用函数
-				handlerInfo.method.Func.Call([]reflect.Value{reflect.ValueOf(component),
+				handlerInfo.Method.Func.Call([]reflect.Value{reflect.ValueOf(component),
 					reflect.ValueOf(cmd),
 					reflect.ValueOf(message)})
 			}

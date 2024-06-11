@@ -84,7 +84,21 @@ func ConvertInterfaceToRealType(typ reflect.Type, v interface{}) interface{} {
 		return v
 	case reflect.Bool:
 		return v.(bool)
-	case reflect.Ptr, reflect.Slice:
+	case reflect.Ptr:
+		if bytes, ok := v.([]byte); ok {
+			newProto := reflect.New(typ.Elem())
+			if protoMessage, ok2 := newProto.Interface().(proto.Message); ok2 {
+				protoErr := proto.Unmarshal(bytes, protoMessage)
+				if protoErr != nil {
+					return protoErr
+				}
+				return protoMessage
+			}
+		}
+		if protoMessage, ok := v.(proto.Message); ok {
+			return protoMessage
+		}
+	case reflect.Slice:
 		if bytes, ok := v.([]byte); ok {
 			newProto := reflect.New(typ.Elem())
 			if protoMessage, ok2 := newProto.Interface().(proto.Message); ok2 {

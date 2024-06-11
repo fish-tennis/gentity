@@ -11,6 +11,8 @@ type Entity interface {
 	// 唯一id
 	GetId() int64
 
+	AddComponent(component Component, arg any)
+
 	// 查找某个组件
 	GetComponentByName(componentName string) Component
 
