@@ -11,7 +11,7 @@ import (
 func GetMessageIdByComponentMessageName(packageName, componentStructName, messageName string) int32 {
 	// enum Message的全名举例:gserver.CmdMoney
 	enumTypeName := fmt.Sprintf("%v.Cmd%v", packageName, componentStructName)
-	enumType,err := protoregistry.GlobalTypes.FindEnumByName(protoreflect.FullName(enumTypeName))
+	enumType, err := protoregistry.GlobalTypes.FindEnumByName(protoreflect.FullName(enumTypeName))
 	if err != nil {
 		//gentity.Debug("%v err:%v", enumTypeName, err)
 		return 0
@@ -30,9 +30,11 @@ func GetMessageIdByComponentMessageName(packageName, componentStructName, messag
 // 根据消息名获取对应的消息号
 // packageName是*.proto文件里定义的package名
 func GetMessageIdByMessageName(packageName, componentStructName, messageName string) int32 {
+	// 先找组件对应的proto文件里定义的消息号
 	messageId := GetMessageIdByComponentMessageName(packageName, componentStructName, messageName)
 	if messageId == 0 {
-		// 如: Cmd_CoinReq
+		// 组件中没有,就直接找全局的,如: Cmd_CoinReq
+		// NOTE: 不要在不同的proto文件里定义同名的消息号,否则可能冲突
 		enumIdName := fmt.Sprintf("Cmd_%v", messageName)
 		protoregistry.GlobalTypes.RangeEnums(func(enumType protoreflect.EnumType) bool {
 			enumValue := enumType.Descriptor().Values().ByName(protoreflect.Name(enumIdName))

@@ -186,12 +186,13 @@ func TestHandlerRegister(t *testing.T) {
 	gentity.SetLogger(gnet.GetLogger())
 	tmpPlayer := newTestPlayer(0, 0)
 	connectionHandler := gnet.NewDefaultConnectionHandler(nil)
+	handlerRegister := gentity.NewComponentHandlerRegister()
 	// 扫描注册消息
-	gentity.AutoRegisterComponentHandler(tmpPlayer, connectionHandler, "On", "Handle", "gserver")
+	handlerRegister.AutoRegisterComponentHandlerWithClient(tmpPlayer, connectionHandler, "On", "Handle", "gserver")
 	// 模拟一次消息调用
-	gentity.ProcessComponentHandler(tmpPlayer, gnet.PacketCommand(pb.CmdQuest_Cmd_FinishQuestReq), &pb.FinishQuestReq{
+	handlerRegister.Invoke(tmpPlayer, gnet.NewProtoPacket(gnet.PacketCommand(pb.CmdQuest_Cmd_FinishQuestReq), &pb.FinishQuestReq{
 		QuestCfgId: 123,
-	})
+	}))
 }
 
 func TestPlayerData(t *testing.T) {

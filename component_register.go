@@ -25,28 +25,29 @@ type ComponentRegister[E Entity] struct {
 }
 
 // 注册组件
-func (ecc *ComponentRegister[E]) Register(componentName string, ctorOrder int, ctor ComponentCtor[E]) {
-	if slices.ContainsFunc(ecc.RegisterInfos, func(ctor *ComponentRegisterInfo[E]) bool {
+func (cr *ComponentRegister[E]) Register(componentName string, ctorOrder int, ctor ComponentCtor[E]) {
+	if slices.ContainsFunc(cr.RegisterInfos, func(ctor *ComponentRegisterInfo[E]) bool {
 		return ctor.ComponentName == componentName
 	}) {
 		return
 	}
-	ecc.RegisterInfos = append(ecc.RegisterInfos, &ComponentRegisterInfo[E]{
+	cr.RegisterInfos = append(cr.RegisterInfos, &ComponentRegisterInfo[E]{
 		ComponentName: componentName,
 		Ctor:          ctor,
 		CtorOrder:     ctorOrder,
 	})
-	slices.SortStableFunc(ecc.RegisterInfos, func(a, b *ComponentRegisterInfo[E]) int {
+	slices.SortStableFunc(cr.RegisterInfos, func(a, b *ComponentRegisterInfo[E]) int {
 		if a.CtorOrder == b.CtorOrder {
 			return cmp.Compare(a.ComponentName, b.ComponentName)
 		}
 		return cmp.Compare(a.CtorOrder, b.CtorOrder)
 	})
+	GetLogger().Info("ComponentRegister name:%v order:%v", componentName, ctorOrder)
 }
 
 // 初始化组件
-func (ecc *ComponentRegister[E]) InitComponents(entity E, arg any) {
-	for _, ctor := range ecc.RegisterInfos {
+func (cr *ComponentRegister[E]) InitComponents(entity E, arg any) {
+	for _, ctor := range cr.RegisterInfos {
 		component := ctor.Ctor(entity, arg)
 		if component != nil && entity.GetComponentByName(component.GetName()) == nil {
 			entity.AddComponent(component, arg)
