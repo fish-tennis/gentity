@@ -64,7 +64,6 @@ func ToString(i interface{}) (string, error) {
 	case string:
 		return v, nil
 	}
-	//gentity.Error("ToString not support type:%v", i)
 	return "", errors.New(fmt.Sprintf("ToString support type:%v", i))
 }
 
