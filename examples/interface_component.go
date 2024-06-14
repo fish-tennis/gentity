@@ -5,6 +5,25 @@ import (
 	"github.com/fish-tennis/gentity/examples/pb"
 )
 
+const (
+	// 组件名
+	ComponentNameInterfaceMap = "InterfaceMap"
+)
+
+// 利用go的init进行组件的自动注册
+func init() {
+	registerPlayerComponentCtor(ComponentNameInterfaceMap, 100, func(player *testPlayer, playerData *pb.PlayerData) gentity.Component {
+		component := &interfaceMapComponent{
+			MapDataComponent: *gentity.NewMapDataComponent(player, ComponentNameInterfaceMap),
+			InterfaceMap:     make(map[string]interface{}),
+		}
+		// 该组件使用了动态结构,不能使用gentity.LoadData来自动加载数据
+		// 需要自己解析出具体的数据
+		component.loadData(playerData.GetInterfaceMap())
+		return component
+	})
+}
+
 // 动态数据组件
 type interfaceMapComponent struct {
 	gentity.MapDataComponent
@@ -12,11 +31,8 @@ type interfaceMapComponent struct {
 	InterfaceMap map[string]interface{} `db:"InterfaceMap"`
 }
 
-func newInterfaceMapComponent(p *testPlayer) *interfaceMapComponent {
-	return &interfaceMapComponent{
-		MapDataComponent: *gentity.NewMapDataComponent(p, "InterfaceMap"),
-		InterfaceMap:     make(map[string]interface{}),
-	}
+func (this *testPlayer) GetInterfaceMap() *interfaceMapComponent {
+	return this.GetComponentByName(ComponentNameInterfaceMap).(*interfaceMapComponent)
 }
 
 // 反序列化

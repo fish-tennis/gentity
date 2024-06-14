@@ -25,14 +25,21 @@ func LoadData(obj interface{}, sourceData interface{}) error {
 	if structCache.IsSingleField() {
 		fieldCache := structCache.Field
 		val := reflectVal.Field(fieldCache.FieldIndex)
-		if val.IsNil() {
-			if !val.CanSet() {
-				GetLogger().Error("%v CanSet false", fieldCache.Name)
-				return nil
-			}
-			newElem := reflect.New(fieldCache.StructField.Type)
-			val.Set(newElem)
-		}
+		fieldCache.InitNilField(val)
+		//if val.IsNil() {
+		//	if !val.CanSet() {
+		//		GetLogger().Error("%v CanSet false", fieldCache.Name)
+		//		return nil
+		//	}
+		//	if fieldCache.StructField.Type.Kind() == reflect.Slice {
+		//		newElem := reflect.MakeSlice(fieldCache.StructField.Type, 0, 0)
+		//		val.Set(newElem)
+		//		GetLogger().Debug("%v MakeSlice", fieldCache.Name)
+		//	} else {
+		//		newElem := reflect.New(fieldCache.StructField.Type)
+		//		val.Set(newElem)
+		//	}
+		//}
 		sourceTyp := reflect.TypeOf(sourceData)
 		switch sourceTyp.Kind() {
 		case reflect.Slice:
@@ -136,13 +143,9 @@ func LoadData(obj interface{}, sourceData interface{}) error {
 				continue
 			}
 			val := reflectVal.Field(fieldCache.FieldIndex)
-			if val.IsNil() {
-				if !val.CanSet() {
-					GetLogger().Error("child cant new field:%v", fieldCache.Name)
-					continue
-				}
-				newElem := reflect.New(fieldCache.StructField.Type)
-				val.Set(newElem)
+			if fieldCache.InitNilField(val) {
+				GetLogger().Error("child nil %v", fieldCache.Name)
+				continue
 			}
 			fieldInterface := val.Interface()
 			childLoadErr := LoadData(fieldInterface, sourceFieldVal.Interface())
@@ -171,14 +174,9 @@ func LoadFromCache(obj interface{}, kvCache KvCache, cacheKey string) (bool, err
 		val := reflectVal.Field(fieldCache.FieldIndex)
 		if cacheType == "string" {
 			if fieldCache.StructField.Type.Kind() == reflect.Ptr || fieldCache.StructField.Type.Kind() == reflect.Interface {
-				if val.IsNil() {
-					if !val.CanSet() {
-						GetLogger().Error("%v CanSet false", fieldCache.Name)
-						return true, errors.New(fmt.Sprintf("%v CanSet false", fieldCache.Name))
-					}
-					newElem := reflect.New(fieldCache.StructField.Type)
-					val.Set(newElem)
-					GetLogger().Debug("cacheKey:%v new %v", cacheKey, fieldCache.Name)
+				if fieldCache.InitNilField(val) {
+					GetLogger().Error("nil %v", fieldCache.Name)
+					return true, errors.New(fmt.Sprintf("%v nil", fieldCache.Name))
 				}
 				if !val.CanInterface() {
 					return true, errors.New(fmt.Sprintf("%v CanInterface false", fieldCache.Name))
@@ -193,14 +191,9 @@ func LoadFromCache(obj interface{}, kvCache KvCache, cacheKey string) (bool, err
 					return true, nil
 				}
 			} else if fieldCache.StructField.Type.Kind() == reflect.Slice {
-				if val.IsNil() {
-					if !val.CanSet() {
-						GetLogger().Error("%v CanSet false", fieldCache.Name)
-						return true, errors.New(fmt.Sprintf("%v CanSet false", fieldCache.Name))
-					}
-					newElem := reflect.New(fieldCache.StructField.Type)
-					val.Set(newElem)
-					GetLogger().Debug("cacheKey:%v new %v", cacheKey, fieldCache.Name)
+				if fieldCache.InitNilField(val) {
+					GetLogger().Error("nil %v", fieldCache.Name)
+					return true, errors.New(fmt.Sprintf("%v nil", fieldCache.Name))
 				}
 				if !val.CanInterface() {
 					return true, errors.New(fmt.Sprintf("%v CanInterface false", fieldCache.Name))
@@ -221,14 +214,9 @@ func LoadFromCache(obj interface{}, kvCache KvCache, cacheKey string) (bool, err
 			}
 			return true, errors.New(fmt.Sprintf("unsupport kind:%v cacheKey:%v cacheType:%v", fieldCache.StructField.Type.Kind(), cacheKey, cacheType))
 		} else if cacheType == "hash" {
-			if val.IsNil() {
-				if !val.CanSet() {
-					GetLogger().Error("%v CanSet false", fieldCache.Name)
-					return true, errors.New(fmt.Sprintf("%v CanSet false", fieldCache.Name))
-				}
-				newElem := reflect.New(fieldCache.StructField.Type)
-				val.Set(newElem)
-				GetLogger().Debug("cacheKey:%v new %v", cacheKey, fieldCache.Name)
+			if fieldCache.InitNilField(val) {
+				GetLogger().Error("nil %v", fieldCache.Name)
+				return true, errors.New(fmt.Sprintf("%v nil", fieldCache.Name))
 			}
 			if !val.CanInterface() {
 				return true, errors.New(fmt.Sprintf("%v CanInterface false", fieldCache.Name))
@@ -247,14 +235,9 @@ func LoadFromCache(obj interface{}, kvCache KvCache, cacheKey string) (bool, err
 	} else {
 		for _, fieldCache := range structCache.Children {
 			val := reflectVal.Field(fieldCache.FieldIndex)
-			if val.IsNil() {
-				if !val.CanSet() {
-					GetLogger().Error("%v CanSet false", fieldCache.Name)
-					return true, errors.New(fmt.Sprintf("%v CanSet false", fieldCache.Name))
-				}
-				newElem := reflect.New(fieldCache.StructField.Type)
-				val.Set(newElem)
-				GetLogger().Debug("cacheKey:%v new %v", cacheKey, fieldCache.Name)
+			if fieldCache.InitNilField(val) {
+				GetLogger().Error("nil %v", fieldCache.Name)
+				return true, errors.New(fmt.Sprintf("%v nil", fieldCache.Name))
 			}
 			fieldInterface := val.Interface()
 			hasCache, err := LoadFromCache(fieldInterface, kvCache, cacheKey+"."+fieldCache.Name)
@@ -305,14 +288,9 @@ func FixEntityDataFromCache(entity Entity, db EntityDb, kvCache KvCache, cacheKe
 			reflectVal := reflect.ValueOf(component).Elem()
 			for _, fieldCache := range structCache.Children {
 				val := reflectVal.Field(fieldCache.FieldIndex)
-				if val.IsNil() {
-					if !val.CanSet() {
-						GetLogger().Error("%v CanSet false", fieldCache.Name)
-						return true
-					}
-					newElem := reflect.New(fieldCache.StructField.Type)
-					val.Set(newElem)
-					GetLogger().Debug("new %v", fieldCache.Name)
+				if fieldCache.InitNilField(val) {
+					GetLogger().Error("%v nil", fieldCache.Name)
+					return true
 				}
 				fieldInterface := val.Interface()
 				cacheKey := GetEntityComponentChildCacheKey(cacheKeyPrefix, entityKey, component.GetName(), fieldCache.Name)

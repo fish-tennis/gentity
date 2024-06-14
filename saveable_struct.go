@@ -1,8 +1,8 @@
 package gentity
 
 import (
-	"github.com/fish-tennis/gentity/util"
 	"reflect"
+	"slices"
 	"strings"
 	"sync"
 )
@@ -27,16 +27,39 @@ type SaveableField struct {
 	StructField reflect.StructField
 	FieldIndex  int
 	// 是否明文保存
-	IsPlain     bool
+	IsPlain bool
 	// 保存的字段名
-	Name        string
+	Name string
+}
+
+// 如果字段为nil,根据类型进行初始化
+func (this *SaveableField) InitNilField(val reflect.Value) bool {
+	if val.IsNil() {
+		if !val.CanSet() {
+			GetLogger().Error("%v CanSet false", this.Name)
+			return false
+		}
+		if this.StructField.Type.Kind() == reflect.Slice {
+			newElem := reflect.MakeSlice(this.StructField.Type, 0, 0)
+			val.Set(newElem)
+			GetLogger().Debug("%v MakeSlice", this.Name)
+		} else if this.StructField.Type.Kind() == reflect.Map {
+			newElem := reflect.MakeMap(this.StructField.Type)
+			val.Set(newElem)
+			GetLogger().Debug("%v MakeMap", this.Name)
+		} else {
+			newElem := reflect.New(this.StructField.Type)
+			val.Set(newElem)
+		}
+	}
+	return true
 }
 
 type safeSaveableStructsMap struct {
 	// 是否使用全小写
 	// gserver使用mongodb,默认使用全小写,以便于redis和mongodb一致
 	useLowerName bool
-	m map[reflect.Type]*SaveableStruct
+	m            map[reflect.Type]*SaveableStruct
 	// 如果在初始化的时候把所有结构缓存的话,这个读写锁是可以去掉的
 	l *sync.RWMutex
 }
@@ -50,18 +73,18 @@ func (s *safeSaveableStructsMap) Set(key reflect.Type, value *SaveableStruct) {
 	}
 }
 
-func (s *safeSaveableStructsMap) Get(key reflect.Type) (*SaveableStruct,bool) {
+func (s *safeSaveableStructsMap) Get(key reflect.Type) (*SaveableStruct, bool) {
 	s.l.RLock()
 	defer s.l.RUnlock()
-	v,ok := s.m[key]
-	return v,ok
+	v, ok := s.m[key]
+	return v, ok
 }
 
 func newSaveableStructsMap() *safeSaveableStructsMap {
 	return &safeSaveableStructsMap{
 		useLowerName: true, // 默认使用全小写
-		l: new(sync.RWMutex),
-		m: make(map[reflect.Type]*SaveableStruct),
+		l:            new(sync.RWMutex),
+		m:            make(map[reflect.Type]*SaveableStruct),
 	}
 }
 
@@ -74,7 +97,7 @@ func GetSaveableStruct(reflectType reflect.Type) *SaveableStruct {
 	if reflectType.Kind() != reflect.Struct {
 		return nil
 	}
-	if cacheStruct,ok := _saveableStructsMap.Get(reflectType); ok {
+	if cacheStruct, ok := _saveableStructsMap.Get(reflectType); ok {
 		return cacheStruct
 	}
 	newStruct := &SaveableStruct{}
@@ -85,7 +108,7 @@ func GetSaveableStruct(reflectType reflect.Type) *SaveableStruct {
 			continue
 		}
 		isPlain := false
-		dbSetting,ok := fieldStruct.Tag.Lookup("db")
+		dbSetting, ok := fieldStruct.Tag.Lookup("db")
 		if !ok {
 			continue
 		}
@@ -95,7 +118,7 @@ func GetSaveableStruct(reflectType reflect.Type) *SaveableStruct {
 			continue
 		}
 		dbSettings := strings.Split(dbSetting, ";")
-		if util.HasString(dbSettings, "plain") {
+		if slices.Contains(dbSettings, "plain") {
 			isPlain = true
 		}
 		// 保存db的字段必须导出
@@ -107,7 +130,7 @@ func GetSaveableStruct(reflectType reflect.Type) *SaveableStruct {
 		if _saveableStructsMap.useLowerName {
 			name = strings.ToLower(fieldStruct.Name)
 		}
-		for _,n := range dbSettings {
+		for _, n := range dbSettings {
 			if n != "" && n != "plain" {
 				// 自动转全小写
 				if _saveableStructsMap.useLowerName {
@@ -134,7 +157,7 @@ func GetSaveableStruct(reflectType reflect.Type) *SaveableStruct {
 		if len(fieldStruct.Tag) == 0 {
 			continue
 		}
-		dbSetting,ok := fieldStruct.Tag.Lookup("child")
+		dbSetting, ok := fieldStruct.Tag.Lookup("child")
 		if !ok {
 			continue
 		}
@@ -154,7 +177,7 @@ func GetSaveableStruct(reflectType reflect.Type) *SaveableStruct {
 			name = strings.ToLower(fieldStruct.Name)
 		}
 		dbSettings := strings.Split(dbSetting, ";")
-		for _,n := range dbSettings {
+		for _, n := range dbSettings {
 			if n != "" {
 				// 自动转全小写
 				if _saveableStructsMap.useLowerName {

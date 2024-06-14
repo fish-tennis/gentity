@@ -3,9 +3,29 @@ package examples
 import (
 	"github.com/fish-tennis/gentity"
 	"github.com/fish-tennis/gentity/examples/pb"
-	"github.com/fish-tennis/gentity/util"
 	"github.com/fish-tennis/gnet"
+	"slices"
 )
+
+const (
+	// 组件名
+	ComponentNameQuest = "Quest"
+)
+
+// 利用go的init进行组件的自动注册
+func init() {
+	registerPlayerComponentCtor(ComponentNameQuest, 0, func(player *testPlayer, playerData *pb.PlayerData) gentity.Component {
+		component := &questComponent{
+			BaseComponent: *gentity.NewBaseComponent(player, ComponentNameQuest),
+			Finished:      &FinishedQuests{},
+			Quests: &CurQuests{
+				Quests: make(map[int32]*pb.QuestData),
+			},
+		}
+		gentity.LoadData(component, playerData.GetQuest())
+		return component
+	})
+}
 
 // 任务组件
 type questComponent struct {
@@ -17,6 +37,10 @@ type questComponent struct {
 	Quests *CurQuests `child:""`
 }
 
+func (this *testPlayer) GetQuest() *questComponent {
+	return this.GetComponentByName(ComponentNameQuest).(*questComponent)
+}
+
 // 已完成的任务
 type FinishedQuests struct {
 	gentity.BaseDirtyMark
@@ -25,7 +49,7 @@ type FinishedQuests struct {
 }
 
 func (f *FinishedQuests) Add(finishedQuestId int32) {
-	if util.ContainsInt32(f.Finished, finishedQuestId) {
+	if slices.Contains(f.Finished, finishedQuestId) {
 		return
 	}
 	f.Finished = append(f.Finished, finishedQuestId)
@@ -40,17 +64,29 @@ type CurQuests struct {
 }
 
 func (c *CurQuests) Add(questData *pb.QuestData) {
-	c.Quests[questData.CfgId] = questData
-	c.SetDirty(questData.CfgId, true)
+	if c.Quests == nil {
+		c.Quests = make(map[int32]*pb.QuestData)
+	}
+	gentity.MapAdd(c, c.Quests, questData.CfgId, questData)
 }
 
 func (c *CurQuests) Remove(questId int32) {
-	delete(c.Quests, questId)
-	c.SetDirty(questId, false)
+	gentity.MapDel(c, c.Quests, questId)
 }
 
 // 完成任务的消息回调
 // 这种格式写的函数可以自动注册客户端消息回调
 func (this *questComponent) OnFinishQuestReq(reqCmd gnet.PacketCommand, req *pb.FinishQuestReq) {
 	gentity.GetLogger().Debug("OnFinishQuestReq:%v", req)
+}
+
+// 事件示例
+type PlayerEntryGame struct {
+	IsReconnect    bool
+	OfflineSeconds int32 // 离线时长
+}
+
+// 组件上的事件响应接口
+func (this *questComponent) OnEventPlayerEntryGame(evt *PlayerEntryGame) {
+	gentity.GetLogger().Debug("questComponent.OnEventPlayerEntryGame:%v", evt)
 }

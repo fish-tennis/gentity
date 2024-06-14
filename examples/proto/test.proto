@@ -2,7 +2,7 @@ syntax = "proto3";
 
 option go_package = "./pb";
 
-package gserver;
+package example;
 
 // 玩家基础信息
 message BaseInfo {

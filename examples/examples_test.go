@@ -107,12 +107,12 @@ func TestDbCache(t *testing.T) {
 	player1 := newTestPlayer(1, 1)
 	playerDb.InsertEntity(player1.Id, getNewPlayerSaveData(player1))
 
-	baseInfo := player1.GetComponentByName("baseinfo").(*baseInfoComponent)
+	baseInfo := player1.GetBaseInfo()
 	baseInfo.AddExp(123)
 	// 只会把baseinfo组件保存到缓存
 	player1.SaveCache(kvCache)
 
-	quest := player1.GetComponentByName("quest").(*questComponent)
+	quest := player1.GetQuest()
 	quest.Finished.Add(1)
 	quest.Quests.Add(&pb.QuestData{
 		CfgId:    2,
@@ -121,7 +121,7 @@ func TestDbCache(t *testing.T) {
 	// 只会把quest组件保存到缓存
 	player1.SaveCache(kvCache)
 
-	interfaceMap := player1.GetComponentByName("InterfaceMap").(*interfaceMapComponent)
+	interfaceMap := player1.GetInterfaceMap()
 	interfaceMap.InterfaceMap["item1"].(*item1).addExp(10)
 	interfaceMap.SetDirty("item1", true)
 	player1.SaveCache(kvCache)
@@ -133,9 +133,10 @@ func TestDbCache(t *testing.T) {
 	loadData := &pb.PlayerData{}
 	playerDb.FindEntityById(player1.Id, loadData)
 	loadPlayer := newTestPlayerFromData(loadData)
-	t.Logf("%v", loadPlayer.GetComponentByName("baseinfo").(*baseInfoComponent))
-	t.Logf("%v", loadPlayer.GetComponentByName("quest").(*questComponent).Finished.Finished)
-	t.Logf("%v", loadPlayer.GetComponentByName("quest").(*questComponent).Quests.Quests)
+	t.Logf("loadData:%v", loadData)
+	t.Logf("BaseInfo:%v", loadPlayer.GetBaseInfo())
+	t.Logf("Quest.Finished:%v", loadPlayer.GetQuest().Finished.Finished)
+	t.Logf("Quest.Quests:%v", loadPlayer.GetQuest().Quests.Quests)
 }
 
 // 测试从缓存修复数据的接口
@@ -154,11 +155,11 @@ func TestFixDataFromCache(t *testing.T) {
 	player1 := newTestPlayer(1, 1)
 	playerDb.InsertEntity(player1.Id, getNewPlayerSaveData(player1))
 
-	baseInfo := player1.GetComponentByName("baseinfo").(*baseInfoComponent)
+	baseInfo := player1.GetBaseInfo()
 	baseInfo.AddExp(123)
 	player1.SaveCache(kvCache)
 
-	quest := player1.GetComponentByName("quest").(*questComponent)
+	quest := player1.GetQuest()
 	quest.Finished.Add(1)
 	quest.Quests.Add(&pb.QuestData{
 		CfgId:    2,
@@ -175,24 +176,31 @@ func TestFixDataFromCache(t *testing.T) {
 	loadData := &pb.PlayerData{}
 	playerDb.FindEntityById(player1.Id, loadData)
 	loadPlayer := newTestPlayerFromData(loadData)
-	t.Logf("%v", loadPlayer.GetComponentByName("baseinfo").(*baseInfoComponent))
-	t.Logf("%v", loadPlayer.GetComponentByName("quest").(*questComponent).Finished.Finished)
-	t.Logf("%v", loadPlayer.GetComponentByName("quest").(*questComponent).Quests.Quests)
+	t.Logf("%v", loadPlayer.GetBaseInfo())
+	t.Logf("%v", loadPlayer.GetQuest().Finished.Finished)
+	t.Logf("%v", loadPlayer.GetQuest().Quests.Quests)
 }
 
-// 测试消息自动注册
+// 测试自动注册
 func TestHandlerRegister(t *testing.T) {
 	gnet.SetLogLevel(gnet.DebugLevel)
 	gentity.SetLogger(gnet.GetLogger())
-	tmpPlayer := newTestPlayer(0, 0)
-	connectionHandler := gnet.NewDefaultConnectionHandler(nil)
-	handlerRegister := gentity.NewComponentHandlerRegister()
-	// 扫描注册消息
-	handlerRegister.AutoRegisterComponentHandlerWithClient(tmpPlayer, connectionHandler, "On", "Handle", "gserver")
-	// 模拟一次消息调用
-	handlerRegister.Invoke(tmpPlayer, gnet.NewProtoPacket(gnet.PacketCommand(pb.CmdQuest_Cmd_FinishQuestReq), &pb.FinishQuestReq{
+	// 注册消息回调接口和事件响应接口
+	autoRegisterTestPlayer()
+	player := newTestPlayer(0, 0)
+	// 模拟玩家收到一个网络消息
+	player.RecvPacket(gnet.NewProtoPacketEx(pb.CmdQuest_Cmd_FinishQuestReq, &pb.FinishQuestReq{
 		QuestCfgId: 123,
 	}))
+	// 模拟玩家收到一个网络消息
+	player.RecvPacket(gnet.NewProtoPacketEx(pb.CmdQuest_Cmd_FinishQuestRes, &pb.FinishQuestRes{
+		QuestCfgId: 456,
+	}))
+	// 模拟玩家分发一个事件
+	player.FireEvent(&PlayerEntryGame{
+		IsReconnect:    true,
+		OfflineSeconds: 12345,
+	})
 }
 
 func TestPlayerData(t *testing.T) {

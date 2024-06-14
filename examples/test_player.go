@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"github.com/fish-tennis/gentity"
 	"github.com/fish-tennis/gentity/examples/pb"
+	"github.com/fish-tennis/gnet"
+	"reflect"
 )
 
 // 玩家实体
@@ -15,12 +17,31 @@ type testPlayer struct {
 	RegionId  int32  `json:"regionId"`  // 区服id
 }
 
-func (this *testPlayer) GetId() int64 {
-	return this.Id
-}
-
+// 保存缓存
 func (this *testPlayer) SaveCache(kvCache gentity.KvCache) error {
 	return this.BaseEntity.SaveCache(kvCache, "p", this.GetId())
+}
+
+// 分发事件
+func (this *testPlayer) FireEvent(event any) {
+	hasHandler := _playerEventHandlerRegister.Invoke(this, event)
+	if !hasHandler {
+		gentity.GetLogger().Debug("no event handler:%v", reflect.TypeOf(event).String())
+	}
+}
+
+func (this *testPlayer) RecvPacket(packet gnet.Packet) {
+	_playerPacketHandlerRegister.Invoke(this, packet)
+}
+
+// entity上的消息回调接口
+func (this *testPlayer) OnFinishQuestRes(reqCmd gnet.PacketCommand, req *pb.FinishQuestRes) {
+	gentity.GetLogger().Debug("OnFinishQuestRes:%v", req)
+}
+
+// entity上的事件响应接口
+func (this *testPlayer) OnEventPlayerEntryGame(evt *PlayerEntryGame) {
+	gentity.GetLogger().Debug("testPlayer.OnEventPlayerEntryGame:%v", evt)
 }
 
 func newTestPlayer(playerId, accountId int64) *testPlayer {
@@ -40,26 +61,8 @@ func newTestPlayerFromData(data *pb.PlayerData) *testPlayer {
 		Name:      data.Name,
 		RegionId:  data.RegionId,
 	}
-	p.AddComponent(&baseInfoComponent{
-		DataComponent: *gentity.NewDataComponent(p, "baseinfo"),
-		BaseInfo: &pb.BaseInfo{
-			Gender: 1,
-			Level:  1,
-			Exp:    0,
-		},
-	}, data.BaseInfo)
-	p.AddComponent(&questComponent{
-		BaseComponent: *gentity.NewBaseComponent(p, "quest"),
-		Finished: &FinishedQuests{
-			Finished: make([]int32, 0),
-		},
-		Quests: &CurQuests{
-			Quests: make(map[int32]*pb.QuestData, 0),
-		},
-	}, data.Quest)
-	im := newInterfaceMapComponent(p)
-	im.loadData(data.InterfaceMap)
-	p.AddComponent(im, nil)
+	// 初始化组件
+	_playerComponentRegister.InitComponents(p, data)
 	return p
 }
 

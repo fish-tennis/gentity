@@ -12,6 +12,11 @@ Entity-Component模式是类似Unity的GameObject-Component的实体组件模式
 
 比如游戏服务器中的玩家对象就属于Entity,玩家的任务模块就是一个Component
 
+- 组件模块注册
+- 组件消息回调接口注册
+- 组件事件分发
+- 组件事件响应接口注册
+
 ## 实体数据
 实体数据的加载和保存是游戏服务器最基础的功能,gentity利用go的struct tag,大大简化了实体数据加载和保存的接口
 

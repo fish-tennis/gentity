@@ -7,6 +7,7 @@ import (
 	"github.com/fish-tennis/gentity/util"
 	"github.com/fish-tennis/gnet"
 	"google.golang.org/protobuf/proto"
+	"slices"
 	"sort"
 	"sync"
 )
@@ -146,7 +147,7 @@ func (this *BaseServerList) FindAndConnectServers(ctx context.Context) {
 	}
 
 	for _, info := range infoMap {
-		if util.HasString(this.connectServerTypes, info.GetServerType()) {
+		if slices.Contains(this.connectServerTypes, info.GetServerType()) {
 			//// 目标服务器已经处于"不活跃"状态了
 			//if util.GetCurrentMS() - info.LastActiveTime > int64(this.activeTimeout) {
 			//	continue

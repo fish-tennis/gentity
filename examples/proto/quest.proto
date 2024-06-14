@@ -2,7 +2,7 @@ syntax = "proto3";
 
 option go_package = "./pb";
 
-package gserver;
+package example;
 
 // 消息号定义
 enum CmdQuest {
