@@ -10,9 +10,11 @@ import (
 )
 
 // 消息回调接口信息
-type MessageHandlerInfo struct {
+type PacketHandlerInfo struct {
 	// 组件名,如果为空,就表示是直接写在Entity上的接口
 	ComponentName string
+	// 消息号
+	Cmd gnet.PacketCommand
 	// 函数信息
 	Method reflect.Method
 	// 匿名函数接口
@@ -20,14 +22,24 @@ type MessageHandlerInfo struct {
 }
 
 // 消息回调接口管理类
-type MessageHandlerRegister struct {
-	HandlerInfos map[gnet.PacketCommand]*MessageHandlerInfo
+type PacketHandlerMgr struct {
+	HandlerInfos map[gnet.PacketCommand]*PacketHandlerInfo
 }
 
-func NewMessageHandlerRegister() *MessageHandlerRegister {
-	return &MessageHandlerRegister{
-		HandlerInfos: make(map[gnet.PacketCommand]*MessageHandlerInfo),
+func NewPacketHandlerMgr() *PacketHandlerMgr {
+	return &PacketHandlerMgr{
+		HandlerInfos: make(map[gnet.PacketCommand]*PacketHandlerInfo),
 	}
+}
+
+// 注册消息回调
+func (this *PacketHandlerMgr) AddHandlerInfo(handlerInfo *PacketHandlerInfo) {
+	if oldInfo, ok := this.HandlerInfos[handlerInfo.Cmd]; ok {
+		if oldInfo.ComponentName != handlerInfo.ComponentName || oldInfo.Method.Name != handlerInfo.Method.Name {
+			GetLogger().Error("duplicate cmd:%v component:%v method:%v", handlerInfo.Cmd, oldInfo.ComponentName, oldInfo.Method.Name)
+		}
+	}
+	this.HandlerInfos[handlerInfo.Cmd] = handlerInfo
 }
 
 // 自动注册消息回调接口类型是func (this *Component) OnFinishQuestReq(cmd PacketCommand, req *pb.XxxMessage)的回调
@@ -36,7 +48,7 @@ func NewMessageHandlerRegister() *MessageHandlerRegister {
 //	类似Java的注解功能
 //	用于服务器内部的逻辑消息
 //	可以在组件里编写函数: HandleXxx(cmd PacketCommand, req *pb.Xxx)
-func (this *MessageHandlerRegister) AutoRegister(entity Entity, methodNamePrefix, protoPackageName string) {
+func (this *PacketHandlerMgr) AutoRegister(entity Entity, methodNamePrefix, protoPackageName string) {
 	// 扫描entity上的消息回调接口
 	this.scanMethods(entity, nil, "", methodNamePrefix, protoPackageName)
 	// 扫描entity的组件上的消息回调接口
@@ -55,7 +67,7 @@ func (this *MessageHandlerRegister) AutoRegister(entity Entity, methodNamePrefix
 //	可以在组件里编写函数: OnXxx(cmd PacketCommand, req *pb.Xxx)
 //	2.服务器内部的逻辑消息
 //	可以在组件里编写函数: HandleXxx(cmd PacketCommand, req *pb.Xxx)
-func (this *MessageHandlerRegister) AutoRegisterWithClient(entity Entity, packetHandlerRegister gnet.PacketHandlerRegister, clientHandlerPrefix, otherHandlerPrefix, protoPackageName string) {
+func (this *PacketHandlerMgr) AutoRegisterWithClient(entity Entity, packetHandlerRegister gnet.PacketHandlerRegister, clientHandlerPrefix, otherHandlerPrefix, protoPackageName string) {
 	// 扫描entity上的消息回调接口
 	this.scanMethods(entity, packetHandlerRegister, clientHandlerPrefix, otherHandlerPrefix, protoPackageName)
 	// 扫描entity的组件上的消息回调接口
@@ -66,7 +78,7 @@ func (this *MessageHandlerRegister) AutoRegisterWithClient(entity Entity, packet
 }
 
 // 扫描一个struct的函数
-func (this *MessageHandlerRegister) scanMethods(obj any, packetHandlerRegister gnet.PacketHandlerRegister,
+func (this *PacketHandlerMgr) scanMethods(obj any, packetHandlerRegister gnet.PacketHandlerRegister,
 	clientHandlerPrefix, otherHandlerPrefix, protoPackageName string) {
 	typ := reflect.TypeOf(obj)
 	componentName := ""
@@ -123,11 +135,11 @@ func (this *MessageHandlerRegister) scanMethods(obj any, packetHandlerRegister g
 			continue
 		}
 		cmd := gnet.PacketCommand(messageId)
-		// 注册消息回调
-		this.HandlerInfos[cmd] = &MessageHandlerInfo{
+		this.AddHandlerInfo(&PacketHandlerInfo{
 			ComponentName: componentName,
+			Cmd:           cmd,
 			Method:        method,
-		}
+		})
 		// 注册客户端消息
 		if isClientMessage && packetHandlerRegister != nil {
 			packetHandlerRegister.Register(cmd, nil, reflect.New(methodArg2.Elem()).Interface().(proto.Message))
@@ -137,9 +149,10 @@ func (this *MessageHandlerRegister) scanMethods(obj any, packetHandlerRegister g
 }
 
 // 用于proto_code_gen工具自动生成的消息注册代码
-func (this *MessageHandlerRegister) RegisterProtoCodeGen(packetHandlerRegister gnet.PacketHandlerRegister, componentName string, cmd gnet.PacketCommand, protoMessage proto.Message, handler func(c Component, m proto.Message)) {
-	this.HandlerInfos[cmd] = &MessageHandlerInfo{
+func (this *PacketHandlerMgr) RegisterProtoCodeGen(packetHandlerRegister gnet.PacketHandlerRegister, componentName string, cmd gnet.PacketCommand, protoMessage proto.Message, handler func(c Component, m proto.Message)) {
+	this.HandlerInfos[cmd] = &PacketHandlerInfo{
 		ComponentName: componentName,
+		Cmd:           cmd,
 		Handler:       handler,
 	}
 	packetHandlerRegister.Register(cmd, nil, protoMessage)
@@ -148,7 +161,7 @@ func (this *MessageHandlerRegister) RegisterProtoCodeGen(packetHandlerRegister g
 // 执行注册的消息回调接口
 // return true表示执行了接口
 // return false表示未执行
-func (this *MessageHandlerRegister) Invoke(entity Entity, packet gnet.Packet) bool {
+func (this *PacketHandlerMgr) Invoke(entity Entity, packet gnet.Packet) bool {
 	// 先找组件接口
 	handlerInfo := this.HandlerInfos[packet.Command()]
 	if handlerInfo != nil {

@@ -24,14 +24,14 @@ func (this *testPlayer) SaveCache(kvCache gentity.KvCache) error {
 
 // 分发事件
 func (this *testPlayer) FireEvent(event any) {
-	hasHandler := _playerEventHandlerRegister.Invoke(this, event)
+	hasHandler := _playerEventHandlerMgr.Invoke(this, event)
 	if !hasHandler {
 		gentity.GetLogger().Debug("no event handler:%v", reflect.TypeOf(event).String())
 	}
 }
 
 func (this *testPlayer) RecvPacket(packet gnet.Packet) {
-	_playerPacketHandlerRegister.Invoke(this, packet)
+	_playerPacketHandlerMgr.Invoke(this, packet)
 }
 
 // entity上的消息回调接口

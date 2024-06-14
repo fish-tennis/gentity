@@ -10,9 +10,9 @@ var (
 	// 组件构造接口注册
 	_playerComponentRegister = gentity.ComponentRegister[*testPlayer]{}
 	// 消息回调接口注册
-	_playerPacketHandlerRegister = gentity.NewMessageHandlerRegister()
+	_playerPacketHandlerMgr = gentity.NewPacketHandlerMgr()
 	// 事件响应接口注册
-	_playerEventHandlerRegister = gentity.NewEventHandlerRegister()
+	_playerEventHandlerMgr = gentity.NewEventHandlerMgr()
 )
 
 // 注册玩家组件构造信息
@@ -25,8 +25,8 @@ func registerPlayerComponentCtor(componentName string, ctorOrder int, ctor func(
 func autoRegisterTestPlayer() {
 	tmpPlayer := newTestPlayer(0, 0)
 	// 消息回调接口注册
-	_playerPacketHandlerRegister.AutoRegisterWithClient(tmpPlayer, gnet.NewDefaultConnectionHandler(nil),
+	_playerPacketHandlerMgr.AutoRegisterWithClient(tmpPlayer, gnet.NewDefaultConnectionHandler(nil),
 		"On", "Handler", "example")
 	// 事件响应接口注册
-	_playerEventHandlerRegister.AutoRegister(tmpPlayer, "OnEvent")
+	_playerEventHandlerMgr.AutoRegister(tmpPlayer, "OnEvent")
 }

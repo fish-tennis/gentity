@@ -17,29 +17,29 @@ type EventHandlerInfo struct {
 }
 
 // 组件事件响应接口管理类
-type EventHandlerRegister struct {
+type EventHandlerMgr struct {
 	// 有事件回调的组件
 	componentNames []string
 	// 事件对应的回调接口列表,一对多
 	eventHandlers map[reflect.Type][]*EventHandlerInfo // eventType -> handlers
 }
 
-func NewEventHandlerRegister() *EventHandlerRegister {
-	return &EventHandlerRegister{
+func NewEventHandlerMgr() *EventHandlerMgr {
+	return &EventHandlerMgr{
 		eventHandlers:  make(map[reflect.Type][]*EventHandlerInfo),
 		componentNames: make([]string, 0),
 	}
 }
 
-func (this *EventHandlerRegister) AddEventHandlerInfo(eventHandlerInfo *EventHandlerInfo) {
-	this.eventHandlers[eventHandlerInfo.EventType] = append(this.eventHandlers[eventHandlerInfo.EventType], eventHandlerInfo)
-	if !slices.Contains(this.componentNames, eventHandlerInfo.ComponentName) {
-		this.componentNames = append(this.componentNames, eventHandlerInfo.ComponentName)
+func (this *EventHandlerMgr) AddHandlerInfo(handlerInfo *EventHandlerInfo) {
+	this.eventHandlers[handlerInfo.EventType] = append(this.eventHandlers[handlerInfo.EventType], handlerInfo)
+	if !slices.Contains(this.componentNames, handlerInfo.ComponentName) {
+		this.componentNames = append(this.componentNames, handlerInfo.ComponentName)
 	}
 }
 
 // 扫描一个struct的函数
-func (this *EventHandlerRegister) scanMethods(obj any, methodNamePrefix string) {
+func (this *EventHandlerMgr) scanMethods(obj any, methodNamePrefix string) {
 	typ := reflect.TypeOf(obj)
 	componentName := ""
 	component, ok := obj.(Component)
@@ -62,18 +62,25 @@ func (this *EventHandlerRegister) scanMethods(obj any, methodNamePrefix string) 
 		}
 		// 事件回调格式: func (this *Quest) OnEventPlayerEntryGame(evt *PlayerEntryGame)
 		eventType := method.Type.In(1)
+		if eventType.Kind() != reflect.Ptr {
+			continue
+		}
+		//// 排除EventReceiver的OnEvent(event interface{})
+		//if method.Name == "OnEvent" {
+		//	continue
+		//}
 		eventHandlerInfo := &EventHandlerInfo{
 			ComponentName: componentName,
 			Method:        method,
 			EventType:     eventType,
 		}
-		this.AddEventHandlerInfo(eventHandlerInfo)
-		GetLogger().Info("EventHandler %v.%v event:%v", componentStructName, method.Name, eventType.String())
+		this.AddHandlerInfo(eventHandlerInfo)
+		GetLogger().Info("ScanEventHandler %v.%v event:%v", componentStructName, method.Name, eventType.String())
 	}
 }
 
 // 扫描entity以及entity的组件,寻找匹配格式的事件响应接口
-func (this *EventHandlerRegister) AutoRegister(entity Entity, methodNamePrefix string) {
+func (this *EventHandlerMgr) AutoRegister(entity Entity, methodNamePrefix string) {
 	// entity上的回调
 	this.scanMethods(entity, methodNamePrefix)
 	// 组件上的事件回调
@@ -86,7 +93,7 @@ func (this *EventHandlerRegister) AutoRegister(entity Entity, methodNamePrefix s
 // 响应事件
 //
 //	如果没有注册对应事件的响应接口,return false
-func (this *EventHandlerRegister) Invoke(entity Entity, evt any) bool {
+func (this *EventHandlerMgr) Invoke(entity Entity, evt any) bool {
 	eventType := reflect.TypeOf(evt)
 	handlers := this.eventHandlers[eventType]
 	if len(handlers) == 0 {

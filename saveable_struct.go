@@ -204,3 +204,10 @@ func GetSaveableStruct(reflectType reflect.Type) *SaveableStruct {
 	_saveableStructsMap.Set(reflectType, newStruct)
 	return newStruct
 }
+
+func GetEntitySaveableStruct(entity Entity) {
+	entity.RangeComponent(func(component Component) bool {
+		GetSaveableStruct(reflect.TypeOf(component))
+		return true
+	})
+}

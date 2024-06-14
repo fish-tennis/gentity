@@ -3,6 +3,7 @@ package gentity
 import (
 	"fmt"
 	"github.com/fish-tennis/gentity/util"
+	"slices"
 	"strings"
 )
 
@@ -40,6 +41,8 @@ type BaseEntity struct {
 	Id int64
 	// 组件表
 	components []Component
+	// 事件响应
+	eventReceivers []EventReceiver
 }
 
 // Entity唯一id
@@ -86,6 +89,24 @@ func (this *BaseEntity) AddComponent(component Component, sourceData interface{}
 		LoadData(component, sourceData)
 	}
 	this.components = append(this.components, component)
+	if eventReceiver, ok := component.(EventReceiver); ok {
+		this.eventReceivers = append(this.eventReceivers, eventReceiver)
+	}
+}
+
+func (this *BaseEntity) AddEventReceiver(eventReceiver EventReceiver) {
+	if slices.Contains(this.eventReceivers, eventReceiver) {
+		return
+	}
+	this.eventReceivers = append(this.eventReceivers, eventReceiver)
+}
+
+func (this *BaseEntity) RangeEventReceiver(f func(eventReceiver EventReceiver) bool) {
+	for _, eventReceiver := range this.eventReceivers {
+		if !f(eventReceiver) {
+			return
+		}
+	}
 }
 
 func (this *BaseEntity) SaveCache(kvCache KvCache, cacheKeyPrefix string, entityKey interface{}) error {
