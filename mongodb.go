@@ -13,10 +13,15 @@ import (
 var _ PlayerDb = (*MongoCollectionPlayer)(nil)
 var _ EntityDb = (*MongoCollection)(nil)
 
+type Sharding interface {
+	Shard() error
+}
+
 // db.EntityDb的mongo实现
 type MongoCollection struct {
-	mongoClient   *mongo.Client
-	mongoDatabase *mongo.Database
+	mongoClient    *mongo.Client
+	mongoDatabase  *mongo.Database
+	hashedShardKey bool
 
 	// 表名
 	collectionName string
@@ -45,10 +50,10 @@ func (this *MongoCollection) CreateIndex(key string, unique bool) {
 }
 
 // 设置分片key
-func (this *MongoCollection) ShardCollection(hashedShardKey bool) error {
+func (this *MongoCollection) Shard() error {
 	collectionFullName := fmt.Sprintf("%v.%v", this.mongoDatabase.Name(), this.collectionName)
 	key := bson.E{Key: this.uniqueId, Value: 1}
-	if hashedShardKey {
+	if this.hashedShardKey {
 		key.Value = "hashed"
 	}
 	err := this.mongoClient.Database("admin").RunCommand(context.Background(), bson.D{
@@ -56,9 +61,9 @@ func (this *MongoCollection) ShardCollection(hashedShardKey bool) error {
 		{"key", bson.D{key}},
 	}).Err()
 	if err != nil {
-		GetLogger().Error("ShardCollection %v err:%v", collectionFullName, err)
+		GetLogger().Error("Shard %v err:%v", collectionFullName, err)
 	} else {
-		GetLogger().Info("ShardCollection %v hashed:%v", collectionFullName, hashedShardKey)
+		GetLogger().Info("Shard %v hashed:%v", collectionFullName, this.hashedShardKey)
 	}
 	return err
 }
@@ -275,11 +280,11 @@ func NewMongoDb(uri, dbName string) *MongoDb {
 }
 
 // 注册普通Entity对应的collection
-// TODO: 增加参数:hashedShardKey
-func (this *MongoDb) RegisterEntityDb(collectionName string, uniqueId string) EntityDb {
+func (this *MongoDb) RegisterEntityDb(collectionName string, hashedShardKey bool, uniqueId string) EntityDb {
 	col := &MongoCollection{
 		mongoClient:    this.mongoClient,
 		mongoDatabase:  this.mongoDatabase,
+		hashedShardKey: hashedShardKey,
 		collectionName: collectionName,
 		uniqueId:       uniqueId,
 	}
@@ -289,12 +294,12 @@ func (this *MongoDb) RegisterEntityDb(collectionName string, uniqueId string) En
 }
 
 // 注册玩家对应的collection
-// TODO: 增加参数:hashedShardKey
-func (this *MongoDb) RegisterPlayerDb(collectionName string, playerId, accountId, region string) PlayerDb {
+func (this *MongoDb) RegisterPlayerDb(collectionName string, hashedShardKey bool, playerId, accountId, region string) PlayerDb {
 	col := &MongoCollectionPlayer{
 		MongoCollection: MongoCollection{
 			mongoClient:    this.mongoClient,
 			mongoDatabase:  this.mongoDatabase,
+			hashedShardKey: hashedShardKey,
 			collectionName: collectionName,
 			uniqueId:       playerId,
 		},
@@ -306,10 +311,10 @@ func (this *MongoDb) RegisterPlayerDb(collectionName string, playerId, accountId
 	return col
 }
 
-// TODO: 增加参数:hashedShardKey
-func (this *MongoDb) RegisterKvDb(collectionName, keyName, valueName string) KvDb {
+func (this *MongoDb) RegisterKvDb(collectionName string, hashedShardKey bool, keyName, valueName string) KvDb {
 	col := &MongoKvDb{
 		mongoDatabase:  this.mongoDatabase,
+		hashedShardKey: hashedShardKey,
 		collectionName: collectionName,
 		keyName:        keyName,
 		valueName:      valueName,
@@ -403,9 +408,24 @@ func (this *MongoDb) GetMongoClient() *mongo.Client {
 // 设置database分片
 func (this *MongoDb) ShardDatabase(dbName string) error {
 	adminDb := this.mongoClient.Database("admin")
-	return adminDb.RunCommand(context.Background(), bson.D{
+	err := adminDb.RunCommand(context.Background(), bson.D{
 		{"enableSharding", dbName},
 	}).Err()
+	if err != nil {
+		// 单机部署的mongodb,会报错no such command: 'enableSharding'
+		return err
+	}
+	for _, entityDb := range this.entityDbs {
+		if shard, ok := entityDb.(Sharding); ok {
+			shard.Shard()
+		}
+	}
+	for _, kvDb := range this.kvDbs {
+		if shard, ok := kvDb.(Sharding); ok {
+			shard.Shard()
+		}
+	}
+	return err
 }
 
 // 设置database分片

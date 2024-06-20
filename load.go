@@ -30,7 +30,7 @@ func LoadData(obj interface{}, sourceData interface{}) error {
 	}
 	reflectVal := reflect.ValueOf(obj).Elem()
 	if structCache.IsSingleField() {
-		err := DeserializeField(obj, sourceData, structCache.Field)
+		err := loadField(obj, sourceData, structCache.Field)
 		if err != nil {
 			GetLogger().Error("DeserializeFieldError:%v fieldName:%v", err.Error(), structCache.Field.Name)
 		}
@@ -76,7 +76,7 @@ func LoadData(obj interface{}, sourceData interface{}) error {
 }
 
 // 基础类型的字段赋值(int,float,bool,string,complex)
-func DeserializeFieldBaseType(obj any, field reflect.Value, data any, fieldStruct *SaveableField) error {
+func loadFieldBaseType(obj any, field reflect.Value, data any, fieldStruct *SaveableField) error {
 	dataVal := reflect.ValueOf(data)
 	switch fieldStruct.StructField.Type.Kind() {
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
@@ -145,7 +145,7 @@ func DeserializeFieldBaseType(obj any, field reflect.Value, data any, fieldStruc
 }
 
 // protobuf类型的字段赋值
-func DeserializeFieldProto(obj any, field reflect.Value, data any, fieldStruct *SaveableField) error {
+func loadFieldProto(obj any, field reflect.Value, data any, fieldStruct *SaveableField) error {
 	if fieldProtoMessage, ok := field.Interface().(proto.Message); ok {
 		dataTyp := reflect.TypeOf(data)
 		switch dataTyp.Kind() {
@@ -196,7 +196,7 @@ func DeserializeFieldProto(obj any, field reflect.Value, data any, fieldStruct *
 	return ErrUnsupportedType
 }
 
-func DeserializeFieldSlice(obj any, field reflect.Value, data any, fieldStruct *SaveableField) error {
+func loadFieldSlice(obj any, field reflect.Value, data any, fieldStruct *SaveableField) error {
 	dataTyp := reflect.TypeOf(data)
 	switch dataTyp.Kind() {
 	case reflect.Slice, reflect.Array:
@@ -247,7 +247,7 @@ func DeserializeFieldSlice(obj any, field reflect.Value, data any, fieldStruct *
 	}
 }
 
-func DeserializeFieldMap(obj any, field reflect.Value, data any, fieldStruct *SaveableField) error {
+func loadFieldMap(obj any, field reflect.Value, data any, fieldStruct *SaveableField) error {
 	dataTyp := reflect.TypeOf(data)
 	if dataTyp.Kind() != reflect.Map {
 		GetLogger().Error("unsupported type,fieldName:%v dataType:%v", fieldStruct.Name, dataTyp.Kind())
@@ -267,7 +267,7 @@ func DeserializeFieldMap(obj any, field reflect.Value, data any, fieldStruct *Sa
 	return nil
 }
 
-func DeserializeFieldStruct(obj any, field reflect.Value, data any, fieldStruct *SaveableField) error {
+func loadFieldStruct(obj any, field reflect.Value, data any, fieldStruct *SaveableField) error {
 	dataTyp := reflect.TypeOf(data)
 	if bytes, ok := data.([]byte); ok {
 		// []byte -> proto.Message
@@ -316,7 +316,7 @@ func DeserializeFieldStruct(obj any, field reflect.Value, data any, fieldStruct 
 }
 
 // 反序列化字段
-func DeserializeField(obj any, sourceData any, fieldStruct *SaveableField) error {
+func loadField(obj any, sourceData any, fieldStruct *SaveableField) error {
 	objVal := reflect.ValueOf(obj).Elem()
 	// 字段value
 	fieldVal := objVal.Field(fieldStruct.FieldIndex)
@@ -328,11 +328,11 @@ func DeserializeField(obj any, sourceData any, fieldStruct *SaveableField) error
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
 		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64,
 		reflect.String, reflect.Bool, reflect.Float32, reflect.Float64, reflect.Complex64, reflect.Complex128:
-		return DeserializeFieldBaseType(obj, fieldVal, sourceData, fieldStruct)
+		return loadFieldBaseType(obj, fieldVal, sourceData, fieldStruct)
 
 	case reflect.Ptr: // reflect.Interface?
 		if _, ok := fieldVal.Interface().(proto.Message); ok {
-			return DeserializeFieldProto(obj, fieldVal, sourceData, fieldStruct)
+			return loadFieldProto(obj, fieldVal, sourceData, fieldStruct)
 		} else {
 			return errors.New(fmt.Sprintf("ptr is not a proto.Message,fieldName:%v", fieldStruct.Name))
 		}
@@ -341,100 +341,17 @@ func DeserializeField(obj any, sourceData any, fieldStruct *SaveableField) error
 		return errors.New("not support interface{} field")
 
 	case reflect.Slice, reflect.Array:
-		return DeserializeFieldSlice(obj, fieldVal, sourceData, fieldStruct)
+		return loadFieldSlice(obj, fieldVal, sourceData, fieldStruct)
 
 	case reflect.Map:
-		return DeserializeFieldMap(obj, fieldVal, sourceData, fieldStruct)
+		return loadFieldMap(obj, fieldVal, sourceData, fieldStruct)
 
 	case reflect.Struct:
-		return DeserializeFieldStruct(obj, fieldVal, sourceData, fieldStruct)
+		return loadFieldStruct(obj, fieldVal, sourceData, fieldStruct)
 
 	default:
 		return ErrUnsupportedType
 	}
-
-	//sourceTyp := reflect.TypeOf(sourceData)
-	//switch sourceTyp.Kind() {
-	//case reflect.Slice, reflect.Array:
-	//	if !fieldStruct.IsPlain {
-	//		// proto反序列化
-	//		// []byte -> proto.Message
-	//		if sourceTyp.Elem().Kind() == reflect.Uint8 {
-	//			if bytes, ok := sourceData.([]byte); ok {
-	//				if len(bytes) == 0 {
-	//					return nil
-	//				}
-	//				// []byte -> proto.Message
-	//				if protoMessage, ok2 := fieldVal.Interface().(proto.Message); ok2 {
-	//					err := proto.Unmarshal(bytes, protoMessage)
-	//					if err != nil {
-	//						GetLogger().Error("%v proto.Unmarshal err:%v", fieldStruct.Name, err.Error())
-	//						return err
-	//					}
-	//					return nil
-	//				}
-	//			}
-	//		}
-	//		// TODO: sourceData如果是[]proto.Message类型
-	//	}
-	//	// 基础类型的slice
-	//	if fieldStruct.StructField.Type.Kind() == reflect.Slice ||
-	//		fieldStruct.StructField.Type.Kind() == reflect.Array {
-	//		// TODO: fieldStruct如果是[]proto.Message类型
-	//		if sourceTyp.Elem().Kind() != fieldStruct.StructField.Type.Elem().Kind() {
-	//			// 类型不一致,暂时返回错误
-	//			return ErrSliceElemType
-	//		}
-	//		sourceDataVal := reflect.ValueOf(sourceData)
-	//		// 如果是数组,长度必须一致
-	//		if fieldStruct.StructField.Type.Kind() == reflect.Array && sourceDataVal.Len() != fieldVal.Len() {
-	//			return ErrArrayLen
-	//		}
-	//		if fieldStruct.StructField.Type.Kind() == reflect.Slice {
-	//			if fieldVal.Cap() < sourceDataVal.Len() {
-	//				fieldVal.Grow(sourceDataVal.Len() - fieldVal.Cap())
-	//			}
-	//			fieldVal.SetLen(sourceDataVal.Len())
-	//		}
-	//		reflect.Copy(fieldVal, sourceDataVal)
-	//	}
-	//
-	//case reflect.Map:
-	//	// map[int|string]int|string -> map[int|string]int|string
-	//	// map[int|string][]byte -> map[int|string]proto.Message
-	//	sourceVal := reflect.ValueOf(sourceData)
-	//	sourceKeyType := sourceTyp.Key()
-	//	sourceValType := sourceTyp.Elem()
-	//	if fieldStruct.StructField.Type.Kind() == reflect.Map {
-	//		//fieldVal := reflect.ValueOf(fieldVal)
-	//		keyType := fieldStruct.StructField.Type.Key()
-	//		valType := fieldStruct.StructField.Type.Elem()
-	//		sourceIt := sourceVal.MapRange()
-	//		for sourceIt.Next() {
-	//			k := ConvertValueToInterface(sourceKeyType, keyType, sourceIt.Key())
-	//			v := ConvertValueToInterface(sourceValType, valType, sourceIt.Value())
-	//			fieldVal.SetMapIndex(reflect.ValueOf(k), reflect.ValueOf(v))
-	//		}
-	//		return nil
-	//	}
-	//
-	//case reflect.Interface, reflect.Ptr:
-	//	sourceVal := reflect.ValueOf(sourceData)
-	//	if sourceProtoMessage, ok := sourceVal.Interface().(proto.Message); ok {
-	//		if protoMessage, ok2 := fieldVal.Interface().(proto.Message); ok2 {
-	//			if sourceProtoMessage.ProtoReflect().Descriptor() == protoMessage.ProtoReflect().Descriptor() {
-	//				proto.Merge(protoMessage, sourceProtoMessage)
-	//				return nil
-	//			}
-	//		}
-	//	}
-	//	// TODO:扩展一个序列化接口
-	//	return errors.New(fmt.Sprintf("unsupport type %v", fieldStruct.Name))
-	//
-	//default:
-	//	return errors.New(fmt.Sprintf("unsupport type %v sourceTyp.Kind():%v", fieldStruct.Name, sourceTyp.Kind()))
-	//}
-	//return nil
 }
 
 // 从缓存中恢复数据

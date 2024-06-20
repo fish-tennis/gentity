@@ -2,6 +2,7 @@ package gentity
 
 import (
 	"context"
+	"fmt"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
@@ -9,7 +10,8 @@ import (
 
 // KvDb的mongo实现
 type MongoKvDb struct {
-	mongoDatabase *mongo.Database
+	mongoDatabase  *mongo.Database
+	hashedShardKey bool
 
 	// 表名
 	collectionName string
@@ -45,7 +47,7 @@ func (this *MongoKvDb) FindAndDecode(key interface{}, decodeData interface{}) er
 	if result == nil || result.Err() == mongo.ErrNoDocuments {
 		return nil
 	}
-	raw,err := result.DecodeBytes()
+	raw, err := result.DecodeBytes()
 	if err != nil {
 		return err
 	}
@@ -91,5 +93,24 @@ func (this *MongoKvDb) Inc(key interface{}, value interface{}, upsert bool) (int
 func (this *MongoKvDb) Delete(key interface{}) error {
 	col := this.mongoDatabase.Collection(this.collectionName)
 	_, err := col.DeleteOne(context.Background(), bson.D{{this.keyName, key}})
+	return err
+}
+
+// 设置分片key
+func (this *MongoKvDb) Shard() error {
+	collectionFullName := fmt.Sprintf("%v.%v", this.mongoDatabase.Name(), this.collectionName)
+	key := bson.E{Key: this.keyName, Value: 1}
+	if this.hashedShardKey {
+		key.Value = "hashed"
+	}
+	err := this.mongoDatabase.Client().Database("admin").RunCommand(context.Background(), bson.D{
+		{"shardCollection", collectionFullName},
+		{"key", bson.D{key}},
+	}).Err()
+	if err != nil {
+		GetLogger().Error("Shard %v err:%v", collectionFullName, err)
+	} else {
+		GetLogger().Info("Shard %v hashed:%v", collectionFullName, this.hashedShardKey)
+	}
 	return err
 }

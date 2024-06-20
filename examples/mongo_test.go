@@ -11,7 +11,7 @@ import (
 // mongo实现的自增id方式
 func TestIncrementId(t *testing.T) {
 	mongoDb := gentity.NewMongoDb(_mongoUri, _mongoDbName)
-	kvDb := mongoDb.RegisterKvDb("kv", "k", "v")
+	kvDb := mongoDb.RegisterKvDb("kv", false, "k", "v")
 	if !mongoDb.Connect() {
 		t.Fatal("connect db error")
 	}
@@ -24,7 +24,7 @@ func TestIncrementId(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			val,err := kvDb.Inc("id", 1, true)
+			val, err := kvDb.Inc("id", 1, true)
 			if err != nil {
 				t.Logf("%v", err)
 			}
@@ -36,7 +36,7 @@ func TestIncrementId(t *testing.T) {
 
 func TestKvDb(t *testing.T) {
 	mongoDb := gentity.NewMongoDb(_mongoUri, _mongoDbName)
-	kvDb := mongoDb.RegisterKvDb("kv", "k", "v")
+	kvDb := mongoDb.RegisterKvDb("kv", false, "k", "v")
 	if !mongoDb.Connect() {
 		t.Fatal("connect db error")
 	}
@@ -46,23 +46,23 @@ func TestKvDb(t *testing.T) {
 
 	protoData := &pb.BaseInfo{
 		Gender: 1,
-		Level: 10,
-		Exp: 123,
+		Level:  10,
+		Exp:    123,
 	}
 	kvDb.Insert("start_timestamp", util.GetCurrentTimeStamp())
 	kvDb.Update("current_ms", util.GetCurrentMS(), true)
 	kvDb.Update("proto_data", protoData, true)
 	kvDb.Insert("temp", "temp value")
-	start_timestamp,err1 := kvDb.Find("start_timestamp")
+	start_timestamp, err1 := kvDb.Find("start_timestamp")
 	t.Logf("%v %v", start_timestamp, err1)
-	current_ms,err2 := kvDb.Find("current_ms")
+	current_ms, err2 := kvDb.Find("current_ms")
 	t.Logf("%v %v", current_ms, err2)
-	proto_data,err3 := kvDb.Find("proto_data")
+	proto_data, err3 := kvDb.Find("proto_data")
 	t.Logf("%v %v", proto_data, err3)
 	protoDecodeData := new(pb.BaseInfo)
 	err4 := kvDb.FindAndDecode("proto_data", protoDecodeData)
 	t.Logf("%v %v", protoDecodeData, err4)
-	temp,err5 := kvDb.Find("temp")
+	temp, err5 := kvDb.Find("temp")
 	t.Logf("%v %v", temp, err5)
 	kvDb.Delete("temp")
 }
@@ -70,9 +70,8 @@ func TestKvDb(t *testing.T) {
 // 设置分片
 // 只对集群模式的mongodb有效
 func TestShard(t *testing.T) {
-	//_mongoUri    = "mongodb://192.168.8.169:20000"
 	mongoDb := gentity.NewMongoDb(_mongoUri, _mongoDbName)
-	playerDb := mongoDb.RegisterPlayerDb("player", "_id", "accountid", "regionid")
+	playerDb := mongoDb.RegisterPlayerDb("player", true, "_id", "accountid", "regionid")
 	if !mongoDb.Connect() {
 		t.Fatal("connect db error")
 	}
@@ -84,12 +83,9 @@ func TestShard(t *testing.T) {
 	if err != nil {
 		t.Logf("ShardDatabase err:%v", err)
 	}
-	playerDb.(*gentity.MongoCollectionPlayer).ShardCollection(true)
-	if err != nil {
-		t.Logf("ShardCollection err:%v", err)
-	}
+	deletePlayer(mongoDb, 1)
 	player1 := newTestPlayer(1, 1)
-	err,_ = playerDb.InsertEntity(player1.GetId(), getNewPlayerSaveData(player1))
+	err, _ = playerDb.InsertEntity(player1.GetId(), getNewPlayerSaveData(player1))
 	if err != nil {
 		t.Logf("InsertEntity err:%v", err)
 	}

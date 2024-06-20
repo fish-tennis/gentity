@@ -49,7 +49,7 @@ func initRedis() gentity.KvCache {
 func TestFindPlayerId(t *testing.T) {
 	gnet.SetLogLevel(gnet.DebugLevel)
 	mongoDb := gentity.NewMongoDb(_mongoUri, _mongoDbName)
-	playerDb := mongoDb.RegisterPlayerDb(_collectionName, "_id", "accountid", "regionid")
+	playerDb := mongoDb.RegisterPlayerDb(_collectionName, true, "_id", "accountid", "regionid")
 	if !mongoDb.Connect() {
 		t.Fatal("connect db error")
 	}
@@ -97,7 +97,7 @@ func deletePlayer(mongoDb *gentity.MongoDb, id int64) {
 func TestDbCache(t *testing.T) {
 	gnet.SetLogLevel(gnet.DebugLevel)
 	mongoDb := gentity.NewMongoDb(_mongoUri, _mongoDbName)
-	playerDb := mongoDb.RegisterPlayerDb(_collectionName, "_id", "accountid", "regionid")
+	playerDb := mongoDb.RegisterPlayerDb(_collectionName, true, "_id", "accountid", "regionid")
 	if !mongoDb.Connect() {
 		t.Fatal("connect db error")
 	}
@@ -178,7 +178,7 @@ func TestDbCache(t *testing.T) {
 func TestFixDataFromCache(t *testing.T) {
 	gnet.SetLogLevel(gnet.DebugLevel)
 	mongoDb := gentity.NewMongoDb(_mongoUri, _mongoDbName)
-	playerDb := mongoDb.RegisterPlayerDb(_collectionName, "_id", "accountid", "regionid")
+	playerDb := mongoDb.RegisterPlayerDb(_collectionName, true, "_id", "accountid", "regionid")
 	if !mongoDb.Connect() {
 		t.Fatal("connect db error")
 	}
@@ -266,7 +266,7 @@ func TestHandlerRegister(t *testing.T) {
 func TestPlayerData(t *testing.T) {
 	gnet.SetLogLevel(gnet.DebugLevel)
 	mongoDb := gentity.NewMongoDb(_mongoUri, _mongoDbName)
-	playerDb := mongoDb.RegisterPlayerDb(_collectionName, "_id", "accountid", "regionid")
+	playerDb := mongoDb.RegisterPlayerDb(_collectionName, true, "_id", "accountid", "regionid")
 	if !mongoDb.Connect() {
 		t.Fatal("connect db error")
 	}
