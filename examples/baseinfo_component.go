@@ -16,8 +16,9 @@ func init() {
 		component := &baseInfoComponent{
 			DataComponent: *gentity.NewDataComponent(player, ComponentNameBaseInfo),
 			BaseInfo: &pb.BaseInfo{
-				Level: 1,
-				Exp:   0,
+				Level:             1,
+				Exp:               0,
+				LongFieldNameTest: "HelloWorld",
 			},
 		}
 		gentity.LoadData(component, playerData.GetBaseInfo())
@@ -37,6 +38,11 @@ func (this *testPlayer) GetBaseInfo() *baseInfoComponent {
 
 func (this *baseInfoComponent) AddExp(exp int32) {
 	this.BaseInfo.Exp += exp
+	this.SetDirty()
+}
+
+func (this *baseInfoComponent) SetLongFieldNameTest(str string) {
+	this.BaseInfo.LongFieldNameTest = str
 	this.SetDirty()
 }
 

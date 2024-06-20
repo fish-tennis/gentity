@@ -11,9 +11,9 @@ import (
 // 玩家实体
 type testPlayer struct {
 	gentity.BaseEntity
-	Name      string `json:"name"`      // 玩家名
-	AccountId int64  `json:"accountId"` // 账号id
-	RegionId  int32  `json:"regionId"`  // 区服id
+	Name      string `json:"Name"`      // 玩家名
+	AccountId int64  `json:"AccountId"` // 账号id
+	RegionId  int32  `json:"RegionId"`  // 区服id
 	// 事件分发的嵌套检测
 	fireEventLoopChecker int32
 }
@@ -82,9 +82,9 @@ func newTestPlayerFromData(data *pb.PlayerData) *testPlayer {
 func getNewPlayerSaveData(p *testPlayer) map[string]interface{} {
 	newPlayerSaveData := make(map[string]interface{})
 	newPlayerSaveData["_id"] = p.Id
-	newPlayerSaveData["name"] = p.Name
-	newPlayerSaveData["accountid"] = p.AccountId
-	newPlayerSaveData["regionid"] = p.RegionId
+	newPlayerSaveData["Name"] = p.Name
+	newPlayerSaveData["AccountId"] = p.AccountId
+	newPlayerSaveData["RegionId"] = p.RegionId
 	gentity.GetEntitySaveData(p, newPlayerSaveData)
 	return newPlayerSaveData
 }

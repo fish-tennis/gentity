@@ -71,7 +71,7 @@ func TestKvDb(t *testing.T) {
 // 只对集群模式的mongodb有效
 func TestShard(t *testing.T) {
 	mongoDb := gentity.NewMongoDb(_mongoUri, _mongoDbName)
-	playerDb := mongoDb.RegisterPlayerDb("player", true, "_id", "accountid", "regionid")
+	playerDb := mongoDb.RegisterPlayerDb("player", true, "_id", "AccountId", "RegionId")
 	if !mongoDb.Connect() {
 		t.Fatal("connect db error")
 	}

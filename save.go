@@ -306,6 +306,8 @@ func SaveEntityChangedDataToDbByKey(entityDb EntityDb, entity Entity, entityKey 
 		GetLogger().Debug("ignore unchange data %v", entityKey)
 		return nil
 	}
+	// NOTE: 明文保存的proto字段,字段名会被mongodb自动转为小写 Q:有办法解决吗?
+	// 如examples里的baseInfoComponent的pb.BaseInfo的LongFieldNameTest字段在mongodb中会被转成longfieldnametest
 	saveDbErr := entityDb.SaveComponents(entityKey, changedDatas)
 	if saveDbErr != nil {
 		GetLogger().Error("SaveDb %v err:%v", entityKey, saveDbErr)
