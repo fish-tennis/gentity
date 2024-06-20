@@ -11,6 +11,9 @@ type EntityDb interface {
 	// 保存Entity数据(update entity by entityKey)
 	SaveEntity(entityKey interface{}, entityData interface{}) error
 
+	// 删除Entity数据(delete entity by entityKey)
+	DeleteEntity(entityKey interface{}) error
+
 	// 保存1个组件(update entity's component)
 	SaveComponent(entityKey interface{}, componentName string, componentData interface{}) error
 

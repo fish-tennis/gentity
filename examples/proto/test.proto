@@ -33,5 +33,8 @@ message PlayerData {
   BaseInfo baseInfo = 5;
   QuestSaveData quest = 6;
   map<string,bytes> interfaceMap = 7; // 动态数据
-  bool isGM = 8;
+  repeated int32 array = 8;
+  repeated bytes slice = 9;
+  bytes struct = 10;
+  bool isGM = 11;
 }

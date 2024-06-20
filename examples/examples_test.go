@@ -8,6 +8,7 @@ import (
 	"github.com/fish-tennis/gnet"
 	"github.com/go-redis/redis/v8"
 	"go.mongodb.org/mongo-driver/bson"
+	"google.golang.org/protobuf/proto"
 	"testing"
 )
 
@@ -46,6 +47,7 @@ func initRedis() gentity.KvCache {
 
 // 测试根据账号查找角色的接口
 func TestFindPlayerId(t *testing.T) {
+	gnet.SetLogLevel(gnet.DebugLevel)
 	mongoDb := gentity.NewMongoDb(_mongoUri, _mongoDbName)
 	playerDb := mongoDb.RegisterPlayerDb(_collectionName, "_id", "accountid", "regionid")
 	if !mongoDb.Connect() {
@@ -93,6 +95,7 @@ func deletePlayer(mongoDb *gentity.MongoDb, id int64) {
 
 // 测试缓存接口
 func TestDbCache(t *testing.T) {
+	gnet.SetLogLevel(gnet.DebugLevel)
 	mongoDb := gentity.NewMongoDb(_mongoUri, _mongoDbName)
 	playerDb := mongoDb.RegisterPlayerDb(_collectionName, "_id", "accountid", "regionid")
 	if !mongoDb.Connect() {
@@ -118,6 +121,10 @@ func TestDbCache(t *testing.T) {
 		CfgId:    2,
 		Progress: 5,
 	})
+	quest.Quests.Add(&pb.QuestData{
+		CfgId:    3,
+		Progress: 6,
+	})
 	// 只会把quest组件保存到缓存
 	player1.SaveCache(kvCache)
 
@@ -126,21 +133,50 @@ func TestDbCache(t *testing.T) {
 	interfaceMap.SetDirty("item1", true)
 	player1.SaveCache(kvCache)
 
-	//time.Sleep(time.Second*3)
+	array := player1.GetArray()
+	for i := 0; i < len(array.Array); i++ {
+		array.Array[i] = int32(i) + 1
+	}
+	array.SetDirty()
+	player1.SaveCache(kvCache)
+
+	slice := player1.GetSlice()
+	slice.Add(&pb.QuestData{CfgId: 4, Progress: 7})
+	slice.Add(&pb.QuestData{CfgId: 5, Progress: 8})
+	player1.SaveCache(kvCache)
+
+	player1.GetStruct().Set(11, 12)
+	player1.SaveCache(kvCache)
+
 	// 只会把修改过数据的组件更新到数据库
 	gentity.SaveEntityChangedDataToDb(playerDb, player1, kvCache, true, "p")
 
+	bytes, err := gentity.GetSaveData(player1.GetStruct(), "")
+	if err == nil {
+		testData := pb.QuestData{}
+		err = proto.Unmarshal(bytes.([]byte), &testData)
+		t.Logf("err:%v testData:%v", err, &testData)
+	}
+
 	loadData := &pb.PlayerData{}
 	playerDb.FindEntityById(player1.Id, loadData)
-	loadPlayer := newTestPlayerFromData(loadData)
+	//// loadData.Struct的值未加载进来
 	t.Logf("loadData:%v", loadData)
+	t.Logf("loadData.Struct:%v", loadData.Struct)
+	loadPlayer := newTestPlayerFromData(loadData)
 	t.Logf("BaseInfo:%v", loadPlayer.GetBaseInfo())
 	t.Logf("Quest.Finished:%v", loadPlayer.GetQuest().Finished.Finished)
 	t.Logf("Quest.Quests:%v", loadPlayer.GetQuest().Quests.Quests)
+	t.Logf("InterfaceMap:%v", loadPlayer.GetInterfaceMap().InterfaceMap)
+	t.Logf("Array:%v", loadPlayer.GetArray().Array)
+	t.Logf("Slice:%v", loadPlayer.GetSlice().Data)
+	s := loadPlayer.GetStruct()
+	t.Logf("Struct:%v", &s.Data)
 }
 
 // 测试从缓存修复数据的接口
 func TestFixDataFromCache(t *testing.T) {
+	gnet.SetLogLevel(gnet.DebugLevel)
 	mongoDb := gentity.NewMongoDb(_mongoUri, _mongoDbName)
 	playerDb := mongoDb.RegisterPlayerDb(_collectionName, "_id", "accountid", "regionid")
 	if !mongoDb.Connect() {
@@ -167,6 +203,23 @@ func TestFixDataFromCache(t *testing.T) {
 	})
 	player1.SaveCache(kvCache)
 
+	interfaceMap := player1.GetInterfaceMap()
+	interfaceMap.InterfaceMap["item1"].(*item1).addExp(10)
+	interfaceMap.SetDirty("item1", true)
+	player1.SaveCache(kvCache)
+
+	array := player1.GetArray()
+	for i := 0; i < len(array.Array); i++ {
+		array.Array[i] = int32(i) + 1
+	}
+	array.SetDirty()
+	player1.SaveCache(kvCache)
+
+	slice := player1.GetSlice()
+	slice.Add(&pb.QuestData{CfgId: 4, Progress: 7})
+	slice.Add(&pb.QuestData{CfgId: 5, Progress: 8})
+	player1.SaveCache(kvCache)
+
 	fixPlayer := newTestPlayer(1, 1)
 	// 上面player1的修改数据之保存到了缓存,并没有保存到数据库
 	// 所以这里模拟了player1的修改数据没保存到数据库的情景
@@ -176,9 +229,12 @@ func TestFixDataFromCache(t *testing.T) {
 	loadData := &pb.PlayerData{}
 	playerDb.FindEntityById(player1.Id, loadData)
 	loadPlayer := newTestPlayerFromData(loadData)
-	t.Logf("%v", loadPlayer.GetBaseInfo())
-	t.Logf("%v", loadPlayer.GetQuest().Finished.Finished)
-	t.Logf("%v", loadPlayer.GetQuest().Quests.Quests)
+	t.Logf("BaseInfo:%v", loadPlayer.GetBaseInfo())
+	t.Logf("Quest.Finished:%v", loadPlayer.GetQuest().Finished.Finished)
+	t.Logf("Quest.Quests:%v", loadPlayer.GetQuest().Quests.Quests)
+	t.Logf("InterfaceMap:%v", loadPlayer.GetInterfaceMap().InterfaceMap)
+	t.Logf("Array:%v", loadPlayer.GetArray().Array)
+	t.Logf("Slice:%v", loadPlayer.GetSlice().Data)
 }
 
 // 测试自动注册
@@ -201,9 +257,14 @@ func TestHandlerRegister(t *testing.T) {
 		IsReconnect:    true,
 		OfflineSeconds: 12345,
 	})
+	// 模拟一个嵌套事件
+	player.FireEvent(&LoopCheckB{
+		Name: "start loop",
+	})
 }
 
 func TestPlayerData(t *testing.T) {
+	gnet.SetLogLevel(gnet.DebugLevel)
 	mongoDb := gentity.NewMongoDb(_mongoUri, _mongoDbName)
 	playerDb := mongoDb.RegisterPlayerDb(_collectionName, "_id", "accountid", "regionid")
 	if !mongoDb.Connect() {
@@ -214,7 +275,7 @@ func TestPlayerData(t *testing.T) {
 	}()
 
 	playerId := int64(103)
-	playerData := &pb.PlayerData{}
+	playerData := &pb.PlayerData{XId: playerId}
 	exists, err := playerDb.FindEntityById(playerId, playerData)
 	if err != nil {
 		t.Fatal(fmt.Sprintf("%v", err))

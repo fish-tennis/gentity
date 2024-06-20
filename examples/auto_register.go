@@ -28,5 +28,5 @@ func autoRegisterTestPlayer() {
 	_playerPacketHandlerMgr.AutoRegisterWithClient(tmpPlayer, gnet.NewDefaultConnectionHandler(nil),
 		"On", "Handler", "example")
 	// 事件响应接口注册
-	_playerEventHandlerMgr.AutoRegister(tmpPlayer, "OnEvent")
+	_playerEventHandlerMgr.AutoRegister(tmpPlayer, "Trigger")
 }

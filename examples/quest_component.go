@@ -80,13 +80,7 @@ func (this *questComponent) OnFinishQuestReq(reqCmd gnet.PacketCommand, req *pb.
 	gentity.GetLogger().Debug("OnFinishQuestReq:%v", req)
 }
 
-// 事件示例
-type PlayerEntryGame struct {
-	IsReconnect    bool
-	OfflineSeconds int32 // 离线时长
-}
-
 // 组件上的事件响应接口
-func (this *questComponent) OnEventPlayerEntryGame(evt *PlayerEntryGame) {
+func (this *questComponent) TriggerPlayerEntryGame(evt *PlayerEntryGame) {
 	gentity.GetLogger().Debug("questComponent.OnEventPlayerEntryGame:%v", evt)
 }

@@ -11,10 +11,11 @@ import (
 // 玩家实体
 type testPlayer struct {
 	gentity.BaseEntity
-	Id        int64  `json:"_id"`       // 玩家id
 	Name      string `json:"name"`      // 玩家名
 	AccountId int64  `json:"accountId"` // 账号id
 	RegionId  int32  `json:"regionId"`  // 区服id
+	// 事件分发的嵌套检测
+	fireEventLoopChecker int32
 }
 
 // 保存缓存
@@ -24,6 +25,18 @@ func (this *testPlayer) SaveCache(kvCache gentity.KvCache) error {
 
 // 分发事件
 func (this *testPlayer) FireEvent(event any) {
+	// 嵌套检测
+	this.fireEventLoopChecker++
+	defer func() {
+		this.fireEventLoopChecker--
+	}()
+	if this.fireEventLoopChecker > 1 {
+		gentity.GetLogger().Warn("FireEventLoopChecker depth:%v event:%v", this.fireEventLoopChecker, reflect.TypeOf(event).String())
+		if this.fireEventLoopChecker > _fireEventLoopLimit {
+			gentity.GetLogger().Error("FireEvent stop, limit:%v event:%v", _fireEventLoopLimit, reflect.TypeOf(event).String())
+			return
+		}
+	}
 	hasHandler := _playerEventHandlerMgr.Invoke(this, event)
 	if !hasHandler {
 		gentity.GetLogger().Debug("no event handler:%v", reflect.TypeOf(event).String())
@@ -40,7 +53,7 @@ func (this *testPlayer) OnFinishQuestRes(reqCmd gnet.PacketCommand, req *pb.Fini
 }
 
 // entity上的事件响应接口
-func (this *testPlayer) OnEventPlayerEntryGame(evt *PlayerEntryGame) {
+func (this *testPlayer) TriggerPlayerEntryGame(evt *PlayerEntryGame) {
 	gentity.GetLogger().Debug("testPlayer.OnEventPlayerEntryGame:%v", evt)
 }
 
@@ -56,11 +69,11 @@ func newTestPlayer(playerId, accountId int64) *testPlayer {
 
 func newTestPlayerFromData(data *pb.PlayerData) *testPlayer {
 	p := &testPlayer{
-		Id:        data.XId,
 		AccountId: data.AccountId,
 		Name:      data.Name,
 		RegionId:  data.RegionId,
 	}
+	p.Id = data.XId
 	// 初始化组件
 	_playerComponentRegister.InitComponents(p, data)
 	return p

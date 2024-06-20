@@ -1,6 +1,7 @@
 package gentity
 
 import (
+	"github.com/fish-tennis/gentity/util"
 	"reflect"
 	"slices"
 	"strings"
@@ -34,7 +35,7 @@ type SaveableField struct {
 
 // 如果字段为nil,根据类型进行初始化
 func (this *SaveableField) InitNilField(val reflect.Value) bool {
-	if val.IsNil() {
+	if util.IsValueNil(val) {
 		if !val.CanSet() {
 			GetLogger().Error("%v CanSet false", this.Name)
 			return false
@@ -55,9 +56,63 @@ func (this *SaveableField) InitNilField(val reflect.Value) bool {
 	return true
 }
 
+// 是否是map[k]any类型的map
+//
+//	这种类型的map,无法直接使用gentity.LoadData来加载数据,因为不知道map的value具体是什么类型
+func (this *SaveableField) IsInterfaceMap() bool {
+	if this.StructField.Type.Kind() != reflect.Map {
+		return false
+	}
+	valueType := this.StructField.Type.Elem()
+	return valueType.Kind() == reflect.Interface
+}
+
+// map[k]any类型的字段,new一个map[k][]byte对象
+func (this *SaveableField) NewBytesMap() any {
+	if !this.IsInterfaceMap() {
+		GetLogger().Error("%v not a interface map", this.Name)
+		return nil
+	}
+	keyType := this.StructField.Type.Key()
+	switch keyType.Kind() {
+	case reflect.Int:
+		return make(map[int][]byte)
+	case reflect.Int8:
+		return make(map[int8][]byte)
+	case reflect.Int16:
+		return make(map[int16][]byte)
+	case reflect.Int32:
+		return make(map[int32][]byte)
+	case reflect.Int64:
+		return make(map[int64][]byte)
+	case reflect.Uint:
+		return make(map[uint][]byte)
+	case reflect.Uint8:
+		return make(map[uint8][]byte)
+	case reflect.Uint16:
+		return make(map[uint16][]byte)
+	case reflect.Uint32:
+		return make(map[uint32][]byte)
+	case reflect.Uint64:
+		return make(map[uint64][]byte)
+	case reflect.Float32:
+		return make(map[float32][]byte)
+	case reflect.Float64:
+		return make(map[float64][]byte)
+	case reflect.Complex64:
+		return make(map[complex64][]byte)
+	case reflect.Complex128:
+		return make(map[complex128][]byte)
+	case reflect.String:
+		return make(map[string][]byte)
+	default:
+		GetLogger().Error("%v unsupported key type:%v", this.Name, keyType.Kind())
+		return nil
+	}
+}
+
 type safeSaveableStructsMap struct {
-	// 是否使用全小写
-	// gserver使用mongodb,默认使用全小写,以便于redis和mongodb一致
+	// 是否使用全小写,默认false
 	useLowerName bool
 	m            map[reflect.Type]*SaveableStruct
 	// 如果在初始化的时候把所有结构缓存的话,这个读写锁是可以去掉的
@@ -82,7 +137,7 @@ func (s *safeSaveableStructsMap) Get(key reflect.Type) (*SaveableStruct, bool) {
 
 func newSaveableStructsMap() *safeSaveableStructsMap {
 	return &safeSaveableStructsMap{
-		useLowerName: true, // 默认使用全小写
+		useLowerName: false,
 		l:            new(sync.RWMutex),
 		m:            make(map[reflect.Type]*SaveableStruct),
 	}
@@ -126,13 +181,17 @@ func GetSaveableStruct(reflectType reflect.Type) *SaveableStruct {
 			GetLogger().Error("%v.%v field must export(start with upper char)", reflectType.Name(), fieldStruct.Name)
 			continue
 		}
+		switch fieldStruct.Type.Kind() {
+		case reflect.Interface, reflect.Func, reflect.Chan, reflect.Uintptr, reflect.UnsafePointer:
+			GetLogger().Error("%v.%v db field unsupported type:%v", reflectType.Name(), fieldStruct.Name, fieldStruct.Type.Kind())
+			continue
+		}
 		name := fieldStruct.Name
 		if _saveableStructsMap.useLowerName {
 			name = strings.ToLower(fieldStruct.Name)
 		}
 		for _, n := range dbSettings {
 			if n != "" && n != "plain" {
-				// 自动转全小写
 				if _saveableStructsMap.useLowerName {
 					name = strings.ToLower(n)
 				} else {
@@ -171,7 +230,6 @@ func GetSaveableStruct(reflectType reflect.Type) *SaveableStruct {
 			GetLogger().Error("%v.%v field must export(start with upper char)", reflectType.Name(), fieldStruct.Name)
 			continue
 		}
-		// 默认使用字段名的全小写
 		name := fieldStruct.Name
 		if _saveableStructsMap.useLowerName {
 			name = strings.ToLower(fieldStruct.Name)
@@ -179,7 +237,6 @@ func GetSaveableStruct(reflectType reflect.Type) *SaveableStruct {
 		dbSettings := strings.Split(dbSetting, ";")
 		for _, n := range dbSettings {
 			if n != "" {
-				// 自动转全小写
 				if _saveableStructsMap.useLowerName {
 					name = strings.ToLower(n)
 				} else {

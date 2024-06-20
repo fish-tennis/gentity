@@ -50,7 +50,7 @@ func (cr *ComponentRegister[E]) InitComponents(entity E, arg any) {
 	for _, ctor := range cr.RegisterInfos {
 		component := ctor.Ctor(entity, arg)
 		if component != nil && entity.GetComponentByName(component.GetName()) == nil {
-			entity.AddComponent(component, arg)
+			entity.AddComponent(component)
 		}
 	}
 }

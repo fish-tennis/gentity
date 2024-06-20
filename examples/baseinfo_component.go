@@ -39,3 +39,18 @@ func (this *baseInfoComponent) AddExp(exp int32) {
 	this.BaseInfo.Exp += exp
 	this.SetDirty()
 }
+
+// 组件上的事件响应接口
+func (this *baseInfoComponent) TriggerLoopCheckA(evt *LoopCheckA) {
+	gentity.GetLogger().Debug("baseInfoComponent.OnEventLoopCheckA:%v", evt)
+	player := this.GetEntity().(*testPlayer)
+	// 在LoopCheckA的响应事件中,触发LoopCheckB事件
+	player.FireEvent(&LoopCheckB{Name: "abcde"})
+}
+
+func (this *baseInfoComponent) TriggerLoopCheckB(evt *LoopCheckB) {
+	gentity.GetLogger().Debug("baseInfoComponent.OnEventLoopCheckB:%v", evt)
+	player := this.GetEntity().(*testPlayer)
+	// 在LoopCheckB的响应事件中,触发LoopCheckA事件
+	player.FireEvent(&LoopCheckA{Num: 123})
+}

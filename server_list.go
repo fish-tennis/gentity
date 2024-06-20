@@ -2,7 +2,6 @@ package gentity
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"github.com/fish-tennis/gentity/util"
 	"github.com/fish-tennis/gnet"
@@ -292,7 +291,7 @@ func (this *BaseServerList) Rpc(serverId int32, request gnet.Packet, reply proto
 	if connection != nil && connection.IsConnected() {
 		return connection.Rpc(request, reply, opts...)
 	}
-	return errors.New("not conncted")
+	return ErrNotConnected
 }
 
 // 添加服务器列表更新回调

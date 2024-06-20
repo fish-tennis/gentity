@@ -72,7 +72,7 @@ type CurQuests struct {
 ```
 
 ## 消息回调
-支持自动注册消息回调
+支持自动注册消息回调,事件响应
 ```go
 // 客户端发给服务器的完成任务的消息回调
 // 这种格式写的函数可以自动注册客户端消息回调
@@ -83,6 +83,13 @@ func (this *Quest) OnFinishQuestReq(reqCmd gnet.PacketCommand, req *pb.FinishQue
 ```go
 // 这种格式写的函数可以自动注册非客户端的消息回调
 func (this *BaseInfo) HandlePlayerEntryGameOk(cmd gnet.PacketCommand, msg *pb.PlayerEntryGameOk) { 
+	// logic code ...
+}
+```
+```go
+// 这种格式写的函数可以自动注册事件响应接口
+// 当执行player.FireEvent(&EventPlayerEntryGame{})时,该响应接口会被调用
+func (this *Quest) TriggerPlayerEntryGame(event *EventPlayerEntryGame) {
 	// logic code ...
 }
 ```

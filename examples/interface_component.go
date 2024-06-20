@@ -19,7 +19,7 @@ func init() {
 		}
 		// 该组件使用了动态结构,不能使用gentity.LoadData来自动加载数据
 		// 需要自己解析出具体的数据
-		component.loadData(playerData.GetInterfaceMap())
+		component.LoadFromBytesMap(playerData.GetInterfaceMap())
 		return component
 	})
 }
@@ -36,7 +36,7 @@ func (this *testPlayer) GetInterfaceMap() *interfaceMapComponent {
 }
 
 // 反序列化
-func (im *interfaceMapComponent) loadData(sourceData map[string][]byte) {
+func (im *interfaceMapComponent) LoadFromBytesMap(bytesMap any) error {
 	registerValueCtor := map[string]func() interface{}{
 		"item1": func() interface{} {
 			return &item1{
@@ -54,6 +54,7 @@ func (im *interfaceMapComponent) loadData(sourceData map[string][]byte) {
 			}
 		},
 	}
+	sourceData := bytesMap.(map[string][]byte)
 	for k, v := range sourceData {
 		if ctor, ok := registerValueCtor[k]; ok {
 			// 动态构造
@@ -70,6 +71,7 @@ func (im *interfaceMapComponent) loadData(sourceData map[string][]byte) {
 	if len(im.InterfaceMap) == 0 {
 		im.makeTestData()
 	}
+	return nil
 }
 
 func (im *interfaceMapComponent) makeTestData() {

@@ -12,7 +12,7 @@ type Entity interface {
 	// 唯一id
 	GetId() int64
 
-	AddComponent(component Component, arg any)
+	AddComponent(component Component)
 
 	// 查找某个组件
 	GetComponentByName(componentName string) Component
@@ -77,16 +77,13 @@ func (this *BaseEntity) RangeComponent(fun func(component Component) bool) {
 	}
 }
 
-func (this *BaseEntity) AddComponent(component Component, sourceData interface{}) {
+func (this *BaseEntity) AddComponent(component Component) {
 	if len(component.GetName()) == 0 {
 		GetLogger().Error("Component Name empty")
 	}
 	if this.GetComponentByName(component.GetName()) != nil {
 		GetLogger().Error("Component Name already exist:%v", component.GetName())
 		return
-	}
-	if sourceData != nil {
-		LoadData(component, sourceData)
 	}
 	this.components = append(this.components, component)
 	if eventReceiver, ok := component.(EventReceiver); ok {

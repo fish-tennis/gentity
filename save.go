@@ -3,6 +3,7 @@ package gentity
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"github.com/fish-tennis/gentity/util"
 	"google.golang.org/protobuf/proto"
 	"reflect"
@@ -11,7 +12,14 @@ import (
 
 // 获取组件的保存数据
 func GetComponentSaveData(component Component) (interface{}, error) {
-	return GetSaveData(component, strings.ToLower(component.GetName()))
+	return GetSaveData(component, GetComponentSaveName(component))
+}
+
+func GetComponentSaveName(component Component) string {
+	if _saveableStructsMap.useLowerName {
+		return strings.ToLower(component.GetName())
+	}
+	return component.GetName()
 }
 
 // 把组件的修改数据保存到缓存
@@ -28,7 +36,7 @@ func SaveComponentChangedDataToCache(kvCache KvCache, cacheKeyPrefix string, ent
 		for _, fieldCache := range structCache.Children {
 			cacheKey := GetEntityComponentChildCacheKey(cacheKeyPrefix, entityKey, component.GetName(), fieldCache.Name)
 			val := reflectVal.Field(fieldCache.FieldIndex)
-			if val.IsNil() {
+			if util.IsValueNil(val) {
 				_, err := kvCache.Del(cacheKey)
 				if IsRedisError(err) {
 					GetLogger().Error("%v cache err:%v", cacheKey, err.Error())
@@ -58,7 +66,7 @@ func SaveChangedDataToCache(kvCache KvCache, obj interface{}, cacheKeyName strin
 		}
 		reflectVal := reflect.ValueOf(obj).Elem()
 		val := reflectVal.Field(fieldCache.FieldIndex)
-		if val.IsNil() {
+		if util.IsValueNil(val) {
 			_, err := kvCache.Del(cacheKeyName)
 			if IsRedisError(err) {
 				GetLogger().Error("%v cache err:%v", cacheKeyName, err.Error())
@@ -78,7 +86,7 @@ func SaveChangedDataToCache(kvCache KvCache, obj interface{}, cacheKeyName strin
 		}
 		reflectVal := reflect.ValueOf(obj).Elem()
 		val := reflectVal.Field(fieldCache.FieldIndex)
-		if val.IsNil() {
+		if util.IsValueNil(val) {
 			_, err := kvCache.Del(cacheKeyName)
 			if IsRedisError(err) {
 				GetLogger().Error("%v cache err:%v", cacheKeyName, err.Error())
@@ -115,6 +123,26 @@ func SaveValueToCache(kvCache KvCache, cacheKeyName string, val reflect.Value) {
 			return
 		}
 
+	case reflect.Struct:
+		if val.CanAddr() {
+			ptrVal := val.Addr()
+			if ptrVal.CanInterface() {
+				cacheData := ptrVal.Interface()
+				switch realData := cacheData.(type) {
+				case proto.Message:
+					// proto.Message -> []byte
+					err := kvCache.Set(cacheKeyName, realData, 0)
+					if err != nil {
+						GetLogger().Error("%v cache err:%v", cacheKeyName, err.Error())
+						return
+					}
+				default:
+					GetLogger().Error("%v cache err:unsupport type:%v", cacheKeyName, reflect.TypeOf(realData))
+					return
+				}
+			}
+		}
+
 	case reflect.Map:
 		// map格式作为一个整体缓存时,需要先删除之前的数据
 		_, err := kvCache.Del(cacheKeyName)
@@ -130,7 +158,7 @@ func SaveValueToCache(kvCache KvCache, cacheKeyName string, val reflect.Value) {
 			return
 		}
 
-	case reflect.Slice:
+	case reflect.Slice, reflect.Array:
 		cacheData := val.Interface()
 		jsonBytes, err := json.Marshal(cacheData)
 		if err != nil {
@@ -235,7 +263,7 @@ func SaveEntityChangedDataToDbByKey(entityDb EntityDb, entity Entity, entityKey 
 					return true
 				}
 				// 使用protobuf存mongodb时,mongodb默认会把字段名转成小写,因为protobuf没设置bson tag
-				changedDatas[strings.ToLower(component.GetName())] = saveData
+				changedDatas[GetComponentSaveName(component)] = saveData
 				if removeCacheAfterSaveDb {
 					delKeys = append(delKeys, GetEntityComponentCacheKey(cachePrefix, entityKey, component.GetName()))
 				}
@@ -245,9 +273,9 @@ func SaveEntityChangedDataToDbByKey(entityDb EntityDb, entity Entity, entityKey 
 		} else {
 			reflectVal := reflect.ValueOf(component).Elem()
 			for _, fieldCache := range structCache.Children {
-				childName := strings.ToLower(component.GetName()) + "." + fieldCache.Name
+				childName := GetComponentSaveName(component) + "." + fieldCache.Name
 				val := reflectVal.Field(fieldCache.FieldIndex)
-				if val.IsNil() {
+				if util.IsValueNil(val) {
 					changedDatas[childName] = nil
 					continue
 				}
@@ -311,204 +339,194 @@ func GetEntitySaveData(entity Entity, componentDatas map[string]interface{}) {
 			GetLogger().Error("%v %v err:%v", entity.GetId(), component.GetName(), err.Error())
 			return true
 		}
-		componentDatas[strings.ToLower(component.GetName())] = saveData
+		componentDatas[GetComponentSaveName(component)] = saveData
 		GetLogger().Debug("GetEntitySaveData %v %v", entity.GetId(), component.GetName())
 		return true
 	})
+}
+
+func saveFieldMapByKeyType[K comparable](obj interface{}, field reflect.Value, parentName string, fieldStruct *SaveableField, keyFn func(*reflect.MapIter) K) (interface{}, error) {
+	// map[K]proto.Message -> map[K][]byte
+	// map[K]interface{} -> map[K]interface{}
+	newMap := make(map[K]any)
+	it := field.MapRange()
+	for it.Next() {
+		// map的value是proto格式,进行序列化
+		key := keyFn(it)
+		valueInterface := it.Value().Interface()
+		v, err := convertInterface(valueInterface, parentName, fieldStruct)
+		if err != nil {
+			GetLogger().Error("%v.%v convert key:%v err:%v", parentName, fieldStruct.Name, key, err.Error())
+			return nil, err
+		}
+		newMap[key] = v
+	}
+	return newMap, nil
+}
+
+func saveFieldMap(obj interface{}, field reflect.Value, parentName string, fieldStruct *SaveableField) (interface{}, error) {
+	typ := field.Type()
+	keyType := typ.Key()
+	valType := typ.Elem()
+	if valType.Kind() == reflect.Interface || valType.Kind() == reflect.Ptr {
+		switch keyType.Kind() {
+		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+			return saveFieldMapByKeyType(obj, field, parentName, fieldStruct, func(iter *reflect.MapIter) int64 {
+				return iter.Key().Int()
+			})
+		case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+			// map[uint]proto.Message -> map[uint64][]byte
+			// map[uint]interface{} -> map[uint64]interface{}
+			return saveFieldMapByKeyType(obj, field, parentName, fieldStruct, func(iter *reflect.MapIter) uint64 {
+				return iter.Key().Uint()
+			})
+		case reflect.String:
+			// map[string]proto.Message -> map[string][]byte
+			// map[string]interface{} -> map[string]interface{}
+			return saveFieldMapByKeyType(obj, field, parentName, fieldStruct, func(iter *reflect.MapIter) string {
+				return iter.Key().String()
+			})
+		case reflect.Bool:
+			// map[bool]proto.Message -> map[bool][]byte
+			// map[bool]interface{} -> map[bool]interface{}
+			return saveFieldMapByKeyType(obj, field, parentName, fieldStruct, func(iter *reflect.MapIter) bool {
+				return iter.Key().Bool()
+			})
+		case reflect.Float32, reflect.Float64:
+			// map[float]proto.Message -> map[float][]byte
+			// map[float]interface{} -> map[float]interface{}
+			return saveFieldMapByKeyType(obj, field, parentName, fieldStruct, func(iter *reflect.MapIter) float64 {
+				return iter.Key().Float()
+			})
+		case reflect.Complex64, reflect.Complex128:
+			// map[complex]proto.Message -> map[complex][]byte
+			// map[complex]interface{} -> map[complex]interface{}
+			return saveFieldMapByKeyType(obj, field, parentName, fieldStruct, func(iter *reflect.MapIter) complex128 {
+				return iter.Key().Complex()
+			})
+		default:
+			GetLogger().Error("%v.%v unsupported map key type:%v", parentName, fieldStruct.Name, keyType.Kind())
+			return nil, ErrUnsupportedKeyType
+		}
+	} else {
+		// map的value是基础类型,无需序列化,直接返回
+		return field.Interface(), nil
+	}
+}
+
+func saveFieldSlice(obj interface{}, field reflect.Value, parentName string, fieldStruct *SaveableField) (interface{}, error) {
+	typ := field.Type()
+	valType := typ.Elem()
+	if valType.Kind() == reflect.Interface || valType.Kind() == reflect.Ptr {
+		newSlice := make([]interface{}, 0, field.Len())
+		for i := 0; i < field.Len(); i++ {
+			sliceElem := field.Index(i)
+			valueInterface := sliceElem.Interface()
+			v, err := convertInterface(valueInterface, parentName, fieldStruct)
+			if err != nil {
+				GetLogger().Error("%v.%v convert index:%v err:%v", parentName, fieldStruct.Name, i, err.Error())
+				return nil, err
+			}
+			newSlice = append(newSlice, v)
+		}
+		// proto
+		return newSlice, nil
+	} else {
+		// slice的value是基础类型,无需序列化,直接返回
+		return field.Interface(), nil
+	}
+}
+
+func saveFieldPtr(obj interface{}, field reflect.Value, parentName string, fieldStruct *SaveableField) (interface{}, error) {
+	// 模块的保存数据是一个proto.Message
+	// proto.Message -> []byte
+	fieldInterface := field.Interface()
+	return convertInterface(fieldInterface, parentName, fieldStruct)
+}
+
+func saveFieldStruct(obj interface{}, field reflect.Value, parentName string, fieldStruct *SaveableField) (interface{}, error) {
+	if field.CanAddr() {
+		ptrVal := field.Addr()
+		if ptrVal.CanInterface() {
+			ptrInterface := ptrVal.Interface()
+			return convertInterface(ptrInterface, parentName, fieldStruct)
+		}
+	}
+	GetLogger().Error("%v.%v not a addr struct type:%v", parentName, fieldStruct.Name, field.Type().String())
+	return field.Interface(), nil
+}
+
+func convertInterface(fieldInterface interface{}, parentName string, fieldStruct *SaveableField) (interface{}, error) {
+	if protoMessage, ok := fieldInterface.(proto.Message); ok {
+		return proto.Marshal(protoMessage)
+	} else {
+		// Saveable
+		if valueSaveable, ok := fieldInterface.(Saveable); ok {
+			valueSaveData, valueSaveErr := GetSaveData(valueSaveable, parentName)
+			if valueSaveErr != nil {
+				GetLogger().Error("%v.%v Saveable err:%v", parentName, fieldStruct.Name, valueSaveErr.Error())
+				return nil, valueSaveErr
+			}
+			return valueSaveData, nil
+		} else {
+			// TODO:扩展一个自定义序列化接口 customSerialize()(interface{}, error)
+			GetLogger().Error("%v.%v not Saveable type:%v", parentName, fieldStruct.Name, reflect.TypeOf(fieldInterface).String())
+			return nil, errors.New(fmt.Sprintf("%v.%v not Saveable type:%v", parentName, fieldStruct.Name, reflect.TypeOf(fieldInterface).String()))
+		}
+	}
 }
 
 // 获取对象的保存数据
 func GetSaveData(obj interface{}, parentName string) (interface{}, error) {
 	structCache := GetSaveableStruct(reflect.TypeOf(obj))
 	if structCache == nil {
-		GetLogger().Debug("not saveable %v", parentName)
+		GetLogger().Error("not saveable %v", parentName)
 		return nil, nil
 	}
-	reflectVal := reflect.ValueOf(obj).Elem()
+	objVal := reflect.ValueOf(obj).Elem()
 	if structCache.IsSingleField() {
-		fieldCache := structCache.Field
-		val := reflectVal.Field(fieldCache.FieldIndex)
-		if val.IsNil() {
+		fieldStruct := structCache.Field
+		field := objVal.Field(fieldStruct.FieldIndex)
+		if util.IsValueNil(field) {
 			return nil, nil
 		}
-		fieldInterface := val.Interface()
-		// 明文保存数据
-		if fieldCache.IsPlain {
-			return fieldInterface, nil
+		// 明文保存的数据,直接返回原始数据
+		if fieldStruct.IsPlain {
+			return field.Interface(), nil
 		}
 		// 非明文保存的数据,一般用于对proto进行序列化
-		switch val.Kind() {
+		switch field.Kind() {
 		case reflect.Map:
-			// 保存数据是一个map
-			typ := reflect.TypeOf(fieldInterface)
-			keyType := typ.Key()
-			valType := typ.Elem()
-			if valType.Kind() == reflect.Interface || valType.Kind() == reflect.Ptr {
-				switch keyType.Kind() {
-				case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-					// map[int]proto.Message -> map[int64][]byte
-					// map[int]interface{} -> map[int64]interface{}
-					newMap := make(map[int64]interface{})
-					it := val.MapRange()
-					for it.Next() {
-						// map的value是proto格式,进行序列化
-						valueInterface := it.Value().Interface()
-						if protoMessage, ok := valueInterface.(proto.Message); ok {
-							bytes, err := proto.Marshal(protoMessage)
-							if err != nil {
-								GetLogger().Error("%v.%v proto %v err:%v", parentName, fieldCache.Name, it.Key().Int(), err.Error())
-								return nil, err
-							}
-							newMap[it.Key().Int()] = bytes
-						} else {
-							// map[int]Saveable
-							if valueSaveable, ok := valueInterface.(Saveable); ok {
-								valueSaveData, valueSaveErr := GetSaveData(valueSaveable, parentName)
-								if valueSaveErr != nil {
-									GetLogger().Error("%v.%v Saveable %v err:%v", parentName, fieldCache.Name, it.Key().Int(), valueSaveErr.Error())
-									return nil, valueSaveErr
-								}
-								newMap[it.Key().Int()] = valueSaveData
-							} else {
-								newMap[it.Key().Int()] = valueInterface
-							}
-						}
-					}
-					return newMap, nil
-				case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-					// map[uint]proto.Message -> map[uint64][]byte
-					// map[uint]interface{} -> map[uint64]interface{}
-					newMap := make(map[uint64]interface{})
-					it := val.MapRange()
-					for it.Next() {
-						// map的value是proto格式,进行序列化
-						valueInterface := it.Value().Interface()
-						if protoMessage, ok := valueInterface.(proto.Message); ok {
-							bytes, err := proto.Marshal(protoMessage)
-							if err != nil {
-								GetLogger().Error("%v.%v proto %v err:%v", parentName, fieldCache.Name, it.Key().Uint(), err.Error())
-								return nil, err
-							}
-							newMap[it.Key().Uint()] = bytes
-						} else {
-							// map[uint]Saveable
-							if valueSaveable, ok := valueInterface.(Saveable); ok {
-								valueSaveData, valueSaveErr := GetSaveData(valueSaveable, parentName)
-								if valueSaveErr != nil {
-									GetLogger().Error("%v.%v Saveable %v err:%v", parentName, fieldCache.Name, it.Key().Uint(), valueSaveErr.Error())
-									return nil, valueSaveErr
-								}
-								newMap[it.Key().Uint()] = valueSaveData
-							} else {
-								newMap[it.Key().Uint()] = valueInterface
-							}
-						}
-					}
-					return newMap, nil
-				case reflect.String:
-					// map[string]proto.Message -> map[string][]byte
-					// map[string]interface{} -> map[string]interface{}
-					newMap := make(map[string]interface{}, val.Len())
-					it := val.MapRange()
-					for it.Next() {
-						// map的value是proto格式,进行序列化
-						valueInterface := it.Value().Interface()
-						if protoMessage, ok := valueInterface.(proto.Message); ok {
-							bytes, err := proto.Marshal(protoMessage)
-							if err != nil {
-								GetLogger().Error("%v.%v proto %v err:%v", parentName, fieldCache.Name, it.Key().String(), err.Error())
-								return nil, err
-							}
-							newMap[it.Key().String()] = bytes
-						} else {
-							// map[string]Saveable
-							if valueSaveable, ok := valueInterface.(Saveable); ok {
-								valueSaveData, valueSaveErr := GetSaveData(valueSaveable, parentName)
-								if valueSaveErr != nil {
-									GetLogger().Error("%v.%v Saveable %v err:%v", parentName, fieldCache.Name, it.Key().String(), valueSaveErr.Error())
-									return nil, valueSaveErr
-								}
-								newMap[it.Key().String()] = valueSaveData
-							} else {
-								newMap[it.Key().String()] = valueInterface
-							}
-						}
-					}
-					return newMap, nil
-				default:
-					GetLogger().Error("%v.%v unsupport key type:%v", parentName, fieldCache.Name, keyType.Kind())
-					return nil, errors.New("unsupport key type")
-				}
-			} else {
-				// map的value是基础类型,无需序列化,直接返回
-				return fieldInterface, nil
-			}
-
+			return saveFieldMap(obj, field, parentName, fieldStruct)
 		case reflect.Slice:
-			typ := reflect.TypeOf(fieldInterface)
-			valType := typ.Elem()
-			if valType.Kind() == reflect.Interface || valType.Kind() == reflect.Ptr {
-				newSlice := make([]interface{}, 0, val.Len())
-				for i := 0; i < val.Len(); i++ {
-					sliceElem := val.Index(i)
-					valueInterface := sliceElem.Interface()
-					if protoMessage, ok := valueInterface.(proto.Message); ok {
-						bytes, err := proto.Marshal(protoMessage)
-						if err != nil {
-							GetLogger().Error("%v.%v proto %v err:%v", parentName, fieldCache.Name, i, err.Error())
-							return nil, err
-						}
-						newSlice = append(newSlice, bytes)
-					} else {
-						// []Saveable
-						if valueSaveable, ok := valueInterface.(Saveable); ok {
-							valueSaveData, valueSaveErr := GetSaveData(valueSaveable, parentName)
-							if valueSaveErr != nil {
-								GetLogger().Error("%v.%v Saveable %v err:%v", parentName, fieldCache.Name, i, valueSaveErr.Error())
-								return nil, valueSaveErr
-							}
-							newSlice = append(newSlice, valueSaveData)
-						} else {
-							newSlice = append(newSlice, valueInterface)
-						}
-					}
-				}
-				// proto
-				return newSlice, nil
-			} else {
-				// slice的value是基础类型,无需序列化,直接返回
-				return fieldInterface, nil
-			}
-
+			return saveFieldSlice(obj, field, parentName, fieldStruct)
 		case reflect.Ptr:
-			// 模块的保存数据是一个proto.Message
-			// proto.Message -> []byte
-			if protoMessage, ok := fieldInterface.(proto.Message); ok {
-				return proto.Marshal(protoMessage)
-			} else {
-				// Saveable
-				if valueSaveable, ok := fieldInterface.(Saveable); ok {
-					valueSaveData, valueSaveErr := GetSaveData(valueSaveable, parentName)
-					if valueSaveErr != nil {
-						GetLogger().Error("%v.%v Saveable err:%v", parentName, fieldCache.Name, valueSaveErr.Error())
-						return nil, valueSaveErr
-					}
-					return valueSaveData, nil
-				} else {
-					// TODO:扩展一个自定义序列化接口
-				}
-			}
-
+			return saveFieldPtr(obj, field, parentName, fieldStruct)
+		case reflect.Struct:
+			return saveFieldStruct(obj, field, parentName, fieldStruct)
+		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+			return field.Int(), nil
+		case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+			return field.Uint(), nil
+		case reflect.Bool:
+			return field.Bool(), nil
+		case reflect.Float32, reflect.Float64:
+			return field.Float(), nil
+		case reflect.Complex64, reflect.Complex128:
+			return field.Complex(), nil
+		case reflect.String:
+			return field.String(), nil
 		default:
-			return nil, errors.New("unsupport key type")
+			GetLogger().Error("%v.%v unsupported type:%v", parentName, fieldStruct.Name, field.Kind())
+			return nil, ErrUnsupportedKeyType
 		}
 	} else {
 		// 多个child子模块的组合
 		compositeSaveData := make(map[string]interface{})
 		for _, fieldCache := range structCache.Children {
 			childName := parentName + "." + fieldCache.Name
-			val := reflectVal.Field(fieldCache.FieldIndex)
-			if val.IsNil() {
+			val := objVal.Field(fieldCache.FieldIndex)
+			if util.IsValueNil(val) {
 				compositeSaveData[fieldCache.Name] = nil
 				continue
 			}
@@ -521,5 +539,4 @@ func GetSaveData(obj interface{}, parentName string) (interface{}, error) {
 		}
 		return compositeSaveData, nil
 	}
-	return nil, errors.New("unsupport type")
 }

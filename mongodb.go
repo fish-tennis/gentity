@@ -2,7 +2,6 @@ package gentity
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -67,7 +66,7 @@ func (this *MongoCollection) ShardCollection(hashedShardKey bool) error {
 // 根据id查找数据
 func (this *MongoCollection) FindEntityById(entityKey interface{}, data interface{}) (bool, error) {
 	if len(this.uniqueId) == 0 {
-		return false, errors.New("no uniqueId column")
+		return false, ErrNoUniqueColumn
 	}
 	col := this.mongoDatabase.Collection(this.collectionName)
 	result := col.FindOne(context.Background(), bson.D{{this.uniqueId, entityKey}})
@@ -93,6 +92,12 @@ func (this *MongoCollection) InsertEntity(entityKey interface{}, entityData inte
 func (this *MongoCollection) SaveEntity(entityKey interface{}, entityData interface{}) error {
 	col := this.mongoDatabase.Collection(this.collectionName)
 	_, err := col.UpdateOne(context.Background(), bson.D{{this.uniqueId, entityKey}}, entityData)
+	return err
+}
+
+func (this *MongoCollection) DeleteEntity(entityKey interface{}) error {
+	col := this.mongoDatabase.Collection(this.collectionName)
+	_, err := col.DeleteOne(context.Background(), bson.D{{this.uniqueId, entityKey}})
 	return err
 }
 
@@ -270,6 +275,7 @@ func NewMongoDb(uri, dbName string) *MongoDb {
 }
 
 // 注册普通Entity对应的collection
+// TODO: 增加参数:hashedShardKey
 func (this *MongoDb) RegisterEntityDb(collectionName string, uniqueId string) EntityDb {
 	col := &MongoCollection{
 		mongoClient:    this.mongoClient,
@@ -283,6 +289,7 @@ func (this *MongoDb) RegisterEntityDb(collectionName string, uniqueId string) En
 }
 
 // 注册玩家对应的collection
+// TODO: 增加参数:hashedShardKey
 func (this *MongoDb) RegisterPlayerDb(collectionName string, playerId, accountId, region string) PlayerDb {
 	col := &MongoCollectionPlayer{
 		MongoCollection: MongoCollection{
@@ -299,6 +306,7 @@ func (this *MongoDb) RegisterPlayerDb(collectionName string, playerId, accountId
 	return col
 }
 
+// TODO: 增加参数:hashedShardKey
 func (this *MongoDb) RegisterKvDb(collectionName, keyName, valueName string) KvDb {
 	col := &MongoKvDb{
 		mongoDatabase:  this.mongoDatabase,
@@ -322,10 +330,11 @@ func (this *MongoDb) GetKvDb(name string) KvDb {
 func (this *MongoDb) Connect() bool {
 	client, err := mongo.Connect(context.Background(), options.Client().ApplyURI(this.uri))
 	if err != nil {
+		GetLogger().Error(err.Error())
 		return false
 	}
 	// Ping the primary
-	if err := client.Ping(context.Background(), readpref.Primary()); err != nil {
+	if err = client.Ping(context.Background(), readpref.Primary()); err != nil {
 		GetLogger().Error(err.Error())
 		return false
 	}

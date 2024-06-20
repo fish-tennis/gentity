@@ -92,6 +92,7 @@ func (this *RedisCache) GetMap(key string, m interface{}) error {
 	valType := typ.Elem()
 	for k, v := range strMap {
 		realKey := ConvertStringToRealType(keyType, k)
+		// 如果是map是map[string]any,value解析需要特殊处理
 		realValue := ConvertStringToRealType(valType, v)
 		val.SetMapIndex(reflect.ValueOf(realKey), reflect.ValueOf(realValue))
 	}

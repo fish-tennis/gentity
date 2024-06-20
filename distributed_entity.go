@@ -1,20 +1,11 @@
 package gentity
 
 import (
-	"errors"
 	"github.com/fish-tennis/gentity/util"
 	"github.com/fish-tennis/gnet"
 	"google.golang.org/protobuf/proto"
 	"sync"
 )
-
-//type DistributedEntity interface {
-//	RoutineEntity
-//}
-
-//type BaseDistributedEntity struct {
-//	BaseRoutineEntity
-//}
 
 // DistributedEntity的回调接口
 type DistributedEntityHelper interface {
@@ -25,8 +16,6 @@ type DistributedEntityHelper interface {
 	// 根据entityId路由到目标服务器
 	// 返回值:服务器id
 	RouteServerId(entityId int64) int32
-	//// 消息转换成RoutineEntity的逻辑消息
-	//PacketToRoutineMessage(from Entity, packet gnet.Packet, to RoutineEntity) interface{}
 	// 消息转换成路由消息
 	PacketToRoutePacket(from Entity, packet gnet.Packet, toEntityId int64) gnet.Packet
 	// 路由消息转换成RoutineEntity的逻辑消息
@@ -236,7 +225,7 @@ func (this *DistributedEntityMgr) RouteRpc(from Entity, toEntityId int64, reques
 	routeServerId := this.distributedEntityHelper.RouteServerId(toEntityId)
 	if routeServerId == 0 {
 		GetLogger().Warn("RouteRpc routeServerId==0 entityId:%v %v", toEntityId, request)
-		return errors.New("not find server")
+		return ErrRouteServerId
 	}
 	routePacket := this.distributedEntityHelper.PacketToRoutePacket(from, request, toEntityId)
 	err := this.serverList.Rpc(routeServerId, routePacket, reply, opts...)
@@ -246,11 +235,11 @@ func (this *DistributedEntityMgr) RouteRpc(from Entity, toEntityId int64, reques
 
 // 处理另一个服务器转发过来的路由消息
 // 解析出实际的消息,放入目标实体的消息队列中
-func (this *DistributedEntityMgr) ParseRoutePacket(connection gnet.Connection, packet gnet.Packet, toEntityId int64) {
+func (this *DistributedEntityMgr) ParseRoutePacket(connection gnet.Connection, packet gnet.Packet, toEntityId int64) error {
 	// 再验证一次是否属于本服务器管理
 	if this.distributedEntityHelper.RouteServerId(toEntityId) != GetApplication().GetId() {
 		GetLogger().Warn("route err entityId:%v %v", toEntityId, packet)
-		return
+		return ErrRouteServerId
 	}
 	toEntity := this.GetEntity(toEntityId)
 	if toEntity == nil {
@@ -259,13 +248,14 @@ func (this *DistributedEntityMgr) ParseRoutePacket(connection gnet.Connection, p
 		}
 		if toEntity == nil {
 			GetLogger().Debug("ParseRoutePacket entity==nil entityId:%v %v", toEntityId, packet)
-			return
+			return ErrEntityNotExists
 		}
 	}
 	message := this.distributedEntityHelper.RoutePacketToRoutineMessage(connection, packet, toEntityId)
 	if message == nil {
 		GetLogger().Debug("ParseRoutePacket convert err entityId:%v %v", toEntityId, packet)
-		return
+		return ErrConvertRoutineMessage
 	}
 	toEntity.PushMessage(message)
+	return nil
 }
