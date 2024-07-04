@@ -157,13 +157,3 @@ func (this *BaseMapDirtyMark) RangeDirtyMap(f func(dirtyKey interface{}, isAddOr
 		f(k, v)
 	}
 }
-
-func MapAdd[M ~map[K]V, K comparable, V any](mapDirtyMark MapDirtyMark, m M, k K, v V) {
-	m[k] = v
-	mapDirtyMark.SetDirty(k, true)
-}
-
-func MapDel[M ~map[K]V, K comparable, V any](mapDirtyMark MapDirtyMark, m M, k K) {
-	delete(m, k)
-	mapDirtyMark.SetDirty(k, false)
-}

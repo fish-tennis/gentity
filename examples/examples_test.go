@@ -111,20 +111,22 @@ func TestDbCache(t *testing.T) {
 	playerDb.InsertEntity(player1.Id, getNewPlayerSaveData(player1))
 
 	baseInfo := player1.GetBaseInfo()
-	baseInfo.AddExp(123)
+	baseInfo.AddExp(456)
 	// 只会把baseinfo组件保存到缓存
 	player1.SaveCache(kvCache)
 
 	quest := player1.GetQuest()
-	quest.Finished.Add(1)
-	quest.Quests.Add(&pb.QuestData{
+	quest.AddFinishId(1)
+	questData2 := &pb.QuestData{
 		CfgId:    2,
 		Progress: 5,
-	})
-	quest.Quests.Add(&pb.QuestData{
+	}
+	quest.Quests.Add(questData2.CfgId, questData2)
+	questData3 := &pb.QuestData{
 		CfgId:    3,
 		Progress: 6,
-	})
+	}
+	quest.Quests.Add(questData3.CfgId, questData3)
 	// 只会把quest组件保存到缓存
 	player1.SaveCache(kvCache)
 
@@ -160,13 +162,12 @@ func TestDbCache(t *testing.T) {
 
 	loadData := &pb.PlayerData{}
 	playerDb.FindEntityById(player1.Id, loadData)
-	//// loadData.Struct的值未加载进来
 	t.Logf("loadData:%v", loadData)
 	t.Logf("loadData.Struct:%v", loadData.Struct)
 	loadPlayer := newTestPlayerFromData(loadData)
 	t.Logf("BaseInfo:%v", loadPlayer.GetBaseInfo())
-	t.Logf("Quest.Finished:%v", loadPlayer.GetQuest().Finished.Finished)
-	t.Logf("Quest.Quests:%v", loadPlayer.GetQuest().Quests.Quests)
+	t.Logf("Quest.Finished:%v", loadPlayer.GetQuest().Finished.Data)
+	t.Logf("Quest.Quests:%v", loadPlayer.GetQuest().Quests.Data)
 	t.Logf("InterfaceMap:%v", loadPlayer.GetInterfaceMap().InterfaceMap)
 	t.Logf("Array:%v", loadPlayer.GetArray().Array)
 	t.Logf("Slice:%v", loadPlayer.GetSlice().Data)
@@ -197,11 +198,12 @@ func TestFixDataFromCache(t *testing.T) {
 	player1.SaveCache(kvCache)
 
 	quest := player1.GetQuest()
-	quest.Finished.Add(1)
-	quest.Quests.Add(&pb.QuestData{
+	quest.AddFinishId(1)
+	questData2 := &pb.QuestData{
 		CfgId:    2,
 		Progress: 5,
-	})
+	}
+	quest.Quests.Add(questData2.CfgId, questData2)
 	player1.SaveCache(kvCache)
 
 	interfaceMap := player1.GetInterfaceMap()
@@ -231,8 +233,8 @@ func TestFixDataFromCache(t *testing.T) {
 	playerDb.FindEntityById(player1.Id, loadData)
 	loadPlayer := newTestPlayerFromData(loadData)
 	t.Logf("BaseInfo:%v", loadPlayer.GetBaseInfo())
-	t.Logf("Quest.Finished:%v", loadPlayer.GetQuest().Finished.Finished)
-	t.Logf("Quest.Quests:%v", loadPlayer.GetQuest().Quests.Quests)
+	t.Logf("Quest.Finished:%v", loadPlayer.GetQuest().Finished.Data)
+	t.Logf("Quest.Quests:%v", loadPlayer.GetQuest().Quests.Data)
 	t.Logf("InterfaceMap:%v", loadPlayer.GetInterfaceMap().InterfaceMap)
 	t.Logf("Array:%v", loadPlayer.GetArray().Array)
 	t.Logf("Slice:%v", loadPlayer.GetSlice().Data)

@@ -17,10 +17,8 @@ func init() {
 	registerPlayerComponentCtor(ComponentNameQuest, 0, func(player *testPlayer, playerData *pb.PlayerData) gentity.Component {
 		component := &questComponent{
 			BaseComponent: *gentity.NewBaseComponent(player, ComponentNameQuest),
-			Finished:      &FinishedQuests{},
-			Quests: &CurQuests{
-				Quests: make(map[int32]*pb.QuestData),
-			},
+			Finished:      new(gentity.SliceData[int32]),
+			Quests:        gentity.NewMapData[int32, *pb.QuestData](),
 		}
 		gentity.LoadData(component, playerData.GetQuest())
 		return component
@@ -32,46 +30,20 @@ type questComponent struct {
 	gentity.BaseComponent
 	// 保存数据的子模块:已完成的任务
 	// 保存数据的子模块必须是导出字段(字段名大写开头)
-	Finished *FinishedQuests `child:""`
+	Finished *gentity.SliceData[int32] `child:"plain"` // 明文保存
 	// 保存数据的子模块:当前任务列表
-	Quests *CurQuests `child:""`
+	Quests *gentity.MapData[int32, *pb.QuestData] `child:""`
 }
 
 func (this *testPlayer) GetQuest() *questComponent {
 	return this.GetComponentByName(ComponentNameQuest).(*questComponent)
 }
 
-// 已完成的任务
-type FinishedQuests struct {
-	gentity.BaseDirtyMark
-	// struct tag里面没有设置保存字段名,会默认使用字段名的全小写形式
-	Finished []int32 `db:"plain"` // 基础类型,设置明文存储
-}
-
-func (f *FinishedQuests) Add(finishedQuestId int32) {
-	if slices.Contains(f.Finished, finishedQuestId) {
+func (this *questComponent) AddFinishId(id int32) {
+	if slices.Contains(this.Finished.Data, id) {
 		return
 	}
-	f.Finished = append(f.Finished, finishedQuestId)
-	f.SetDirty()
-}
-
-// 当前任务列表
-type CurQuests struct {
-	gentity.BaseMapDirtyMark
-	// struct tag里面没有设置保存字段名,会默认使用字段名的全小写形式
-	Quests map[int32]*pb.QuestData `db:""`
-}
-
-func (c *CurQuests) Add(questData *pb.QuestData) {
-	if c.Quests == nil {
-		c.Quests = make(map[int32]*pb.QuestData)
-	}
-	gentity.MapAdd(c, c.Quests, questData.CfgId, questData)
-}
-
-func (c *CurQuests) Remove(questId int32) {
-	gentity.MapDel(c, c.Quests, questId)
+	this.Finished.Add(id)
 }
 
 // 完成任务的消息回调

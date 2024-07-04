@@ -482,7 +482,7 @@ func convertInterface(fieldInterface interface{}, parentName string, fieldStruct
 func GetSaveData(obj interface{}, parentName string) (interface{}, error) {
 	structCache := GetSaveableStruct(reflect.TypeOf(obj))
 	if structCache == nil {
-		GetLogger().Error("not saveable %v", parentName)
+		GetLogger().Error("not saveable %v type:%v", parentName, reflect.TypeOf(obj))
 		return nil, nil
 	}
 	objVal := reflect.ValueOf(obj).Elem()

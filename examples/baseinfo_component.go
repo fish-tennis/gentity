@@ -37,13 +37,19 @@ func (this *testPlayer) GetBaseInfo() *baseInfoComponent {
 }
 
 func (this *baseInfoComponent) AddExp(exp int32) {
-	this.BaseInfo.Exp += exp
-	this.SetDirty()
+	gentity.Set(this, &this.BaseInfo.Exp, this.BaseInfo.Exp+exp)
+	// gentity.Set等同于下面2行
+	//this.BaseInfo.Exp += exp
+	//this.SetDirty()
 }
 
 func (this *baseInfoComponent) SetLongFieldNameTest(str string) {
-	this.BaseInfo.LongFieldNameTest = str
-	this.SetDirty()
+	gentity.SetFn(this, func() {
+		this.BaseInfo.LongFieldNameTest = str
+	})
+	// gentity.SetFn等同于下面2行
+	//this.BaseInfo.LongFieldNameTest = str
+	//this.SetDirty()
 }
 
 // 组件上的事件响应接口

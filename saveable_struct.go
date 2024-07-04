@@ -8,6 +8,16 @@ import (
 	"sync"
 )
 
+// 定义数据的关键字,允许应用层自行修改
+var (
+	// 单个保存字段的关键字
+	KeywordDb = "db"
+	// 子字段的关键字
+	KeywordChild = "child"
+	// 明文保存的关键字
+	KeywordPlain = "plain"
+)
+
 var _saveableStructsMap = newSaveableStructsMap()
 
 // 有需要保存字段的结构
@@ -124,7 +134,15 @@ func (s *safeSaveableStructsMap) Set(key reflect.Type, value *SaveableStruct) {
 	defer s.l.Unlock()
 	s.m[key] = value
 	if value != nil {
-		GetLogger().Debug("SaveableStruct: %v", key)
+		if len(value.Children) == 0 {
+			GetLogger().Debug("SaveableStruct: %v plain:%v", key, value.Field.IsPlain)
+		} else {
+			var children []string
+			for _, child := range value.Children {
+				children = append(children, child.Name)
+			}
+			GetLogger().Debug("SaveableStruct: %v children:%v", key, children)
+		}
 	}
 }
 
@@ -143,9 +161,13 @@ func newSaveableStructsMap() *safeSaveableStructsMap {
 	}
 }
 
+func GetSaveableStruct(reflectType reflect.Type) *SaveableStruct {
+	return GetSaveableStructChild(reflectType, false)
+}
+
 // 获取对象的结构描述
 // 如果缓存过,则直接从缓存中获取
-func GetSaveableStruct(reflectType reflect.Type) *SaveableStruct {
+func GetSaveableStructChild(reflectType reflect.Type, defaultPlain bool) *SaveableStruct {
 	if reflectType.Kind() == reflect.Ptr {
 		reflectType = reflectType.Elem()
 	}
@@ -162,8 +184,8 @@ func GetSaveableStruct(reflectType reflect.Type) *SaveableStruct {
 		if len(fieldStruct.Tag) == 0 {
 			continue
 		}
-		isPlain := false
-		dbSetting, ok := fieldStruct.Tag.Lookup("db")
+		isPlain := defaultPlain
+		dbSetting, ok := fieldStruct.Tag.Lookup(KeywordDb)
 		if !ok {
 			continue
 		}
@@ -173,7 +195,7 @@ func GetSaveableStruct(reflectType reflect.Type) *SaveableStruct {
 			continue
 		}
 		dbSettings := strings.Split(dbSetting, ";")
-		if slices.Contains(dbSettings, "plain") {
+		if slices.Contains(dbSettings, KeywordPlain) {
 			isPlain = true
 		}
 		// 保存db的字段必须导出
@@ -191,7 +213,7 @@ func GetSaveableStruct(reflectType reflect.Type) *SaveableStruct {
 			name = strings.ToLower(fieldStruct.Name)
 		}
 		for _, n := range dbSettings {
-			if n != "" && n != "plain" {
+			if n != "" && n != KeywordPlain {
 				if _saveableStructsMap.useLowerName {
 					name = strings.ToLower(n)
 				} else {
@@ -216,7 +238,7 @@ func GetSaveableStruct(reflectType reflect.Type) *SaveableStruct {
 		if len(fieldStruct.Tag) == 0 {
 			continue
 		}
-		dbSetting, ok := fieldStruct.Tag.Lookup("child")
+		dbSetting, ok := fieldStruct.Tag.Lookup(KeywordChild)
 		if !ok {
 			continue
 		}
@@ -235,8 +257,9 @@ func GetSaveableStruct(reflectType reflect.Type) *SaveableStruct {
 			name = strings.ToLower(fieldStruct.Name)
 		}
 		dbSettings := strings.Split(dbSetting, ";")
+		isChildPlain := slices.Contains(dbSettings, KeywordPlain)
 		for _, n := range dbSettings {
-			if n != "" {
+			if n != "" && n != KeywordPlain {
 				if _saveableStructsMap.useLowerName {
 					name = strings.ToLower(n)
 				} else {
@@ -249,10 +272,11 @@ func GetSaveableStruct(reflectType reflect.Type) *SaveableStruct {
 			StructField: fieldStruct,
 			FieldIndex:  i,
 			Name:        name,
+			IsPlain:     isChildPlain,
 		}
 		newStruct.Children = append(newStruct.Children, fieldCache)
-		GetLogger().Debug("child %v.%v", reflectType.Name(), name)
-		GetSaveableStruct(fieldCache.StructField.Type)
+		GetLogger().Debug("child %v.%v plain:%v", reflectType.Name(), name, isChildPlain)
+		GetSaveableStructChild(fieldCache.StructField.Type, isChildPlain)
 	}
 	if newStruct.Field == nil && len(newStruct.Children) == 0 {
 		_saveableStructsMap.Set(reflectType, nil)

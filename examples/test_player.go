@@ -15,6 +15,7 @@ type testPlayer struct {
 	AccountId int64  `json:"AccountId"` // 账号id
 	RegionId  int32  `json:"RegionId"`  // 区服id
 	// 事件分发的嵌套检测
+	// TODO: map[reflect.type]int32
 	fireEventLoopChecker int32
 }
 
