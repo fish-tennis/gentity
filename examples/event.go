@@ -1,7 +1,7 @@
 package examples
 
 var (
-	_fireEventLoopLimit = int32(3)
+	_fireSameEventLoopLimit = int32(3)
 )
 
 // 事件示例

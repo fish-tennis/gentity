@@ -15,8 +15,7 @@ type testPlayer struct {
 	AccountId int64  `json:"AccountId"` // 账号id
 	RegionId  int32  `json:"RegionId"`  // 区服id
 	// 事件分发的嵌套检测
-	// TODO: map[reflect.type]int32
-	fireEventLoopChecker int32
+	fireEventLoopChecker map[reflect.Type]int32
 }
 
 // 保存缓存
@@ -26,15 +25,18 @@ func (this *testPlayer) SaveCache(kvCache gentity.KvCache) error {
 
 // 分发事件
 func (this *testPlayer) FireEvent(event any) {
+	if this.fireEventLoopChecker == nil {
+		this.fireEventLoopChecker = make(map[reflect.Type]int32)
+	}
 	// 嵌套检测
-	this.fireEventLoopChecker++
+	this.fireEventLoopChecker[reflect.TypeOf(event)]++
 	defer func() {
-		this.fireEventLoopChecker--
+		this.fireEventLoopChecker[reflect.TypeOf(event)]--
 	}()
-	if this.fireEventLoopChecker > 1 {
+	if this.fireEventLoopChecker[reflect.TypeOf(event)] > 1 {
 		gentity.GetLogger().Warn("FireEventLoopChecker depth:%v event:%v", this.fireEventLoopChecker, reflect.TypeOf(event).String())
-		if this.fireEventLoopChecker > _fireEventLoopLimit {
-			gentity.GetLogger().Error("FireEvent stop, limit:%v event:%v", _fireEventLoopLimit, reflect.TypeOf(event).String())
+		if this.fireEventLoopChecker[reflect.TypeOf(event)] > _fireSameEventLoopLimit {
+			gentity.GetLogger().Error("FireEvent stop, limit:%v event:%v", _fireSameEventLoopLimit, reflect.TypeOf(event).String())
 			return
 		}
 	}
