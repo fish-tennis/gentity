@@ -24,6 +24,25 @@ message QuestData {
   int32 progress = 2; // 进度
 }
 
+// 背包模块数据
+message BagSaveData {
+  map<int32,int32> countItem = 1;
+  map<int64,bytes> uniqueItem = 2;
+  repeated bytes testUniqueItem = 3;
+}
+
+// 可数的普通物品(可叠加的)
+message CountItem {
+  int32 cfgId = 1; // 物品配置id
+  int32 count = 2; // 物品数量
+}
+
+// 不可叠加的物品
+message UniqueItem {
+  int64 uniqueId = 1; // 唯一id
+  int32 cfgId = 2; // 物品配置id
+}
+
 // 玩家在mongo中的保存格式
 // 用于一次性把玩家数据加载进来
 message PlayerData {
@@ -38,4 +57,5 @@ message PlayerData {
   repeated bytes slice = 9;
   bytes struct = 10;
   bool isGM = 11;
+  BagSaveData bag = 12;
 }

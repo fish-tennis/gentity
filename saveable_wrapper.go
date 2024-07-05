@@ -15,11 +15,13 @@ func (md *MapData[K, V]) Init() {
 	md.Data = make(map[K]V)
 }
 
-func (md *MapData[K, V]) Add(k K, v V) {
+// map[k] = v
+func (md *MapData[K, V]) Set(k K, v V) {
 	md.Data[k] = v
 	md.SetDirty(k, true)
 }
 
+// delete(map, k)
 func (md *MapData[K, V]) Delete(k K) {
 	delete(md.Data, k)
 	md.SetDirty(k, false)

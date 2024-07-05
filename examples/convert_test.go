@@ -3,6 +3,7 @@ package examples
 import (
 	"github.com/fish-tennis/gentity"
 	"github.com/fish-tennis/gentity/examples/pb"
+	"github.com/fish-tennis/gnet"
 	"google.golang.org/protobuf/proto"
 	"reflect"
 	"testing"
@@ -140,4 +141,46 @@ func TestSaveableStruct(t *testing.T) {
 			t.Logf("err:%v newData:%v", err, newData)
 		}
 	}
+}
+
+func TestChildSaveableStruct(t *testing.T) {
+	gnet.SetLogLevel(-1)
+	//bag := &bagComponent{
+	//	BagCountItem: &BagCountItem{},
+	//	BagUniqueItem: &BagUniqueItem{
+	//		Data: make(map[int64]int32),
+	//	},
+	//}
+	//bag.BagCountItem.Init()
+	//gentity.GetSaveableStruct(reflect.TypeOf(bag))
+
+	player := newTestPlayer(1, 1)
+	gentity.GetEntitySaveableStruct(player)
+	bag := player.GetBag()
+	for i := 0; i < 3; i++ {
+		bag.BagCountItem.AddItem(int32(i+1), int32((i+1)*10))
+	}
+	//saveData, err := gentity.GetComponentSaveData(bag)
+	//if err != nil {
+	//	t.Error(err)
+	//}
+	//t.Log(fmt.Sprintf("%v", saveData))
+
+	structCache := gentity.GetSaveableStruct(reflect.TypeOf(bag.BagCountItem))
+	objVal := reflect.ValueOf(bag.BagCountItem).Elem()
+	field := objVal.Field(structCache.Field.FieldIndex)
+	fieldInterface := field.Interface()
+	t.Logf("CanAddr:%v kind:%v", field.CanAddr(), field.Kind())
+	if _, ok := fieldInterface.(gentity.Saveable); ok {
+		t.Logf("%v", fieldInterface)
+	} else if field.CanAddr() {
+		fieldAddr := field.Addr()
+		fieldInterface = fieldAddr.Interface()
+		if saveable, ok := fieldInterface.(gentity.Saveable); ok {
+			t.Logf("%v", fieldInterface)
+			valueSaveData, valueSaveErr := gentity.GetSaveData(saveable, "Bag")
+			t.Logf("valueSaveData:%v err:%v", valueSaveData, valueSaveErr)
+		}
+	}
+
 }

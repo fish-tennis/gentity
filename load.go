@@ -271,21 +271,26 @@ func loadFieldStruct(obj any, field reflect.Value, data any, fieldStruct *Saveab
 	dataTyp := reflect.TypeOf(data)
 	if bytes, ok := data.([]byte); ok {
 		// []byte -> proto.Message
-		if field.CanAddr() {
-			fieldAddr := field.Addr()
-			if fieldAddr.CanInterface() {
-				fieldInterface := fieldAddr.Interface()
-				if protoMessage, ok := fieldInterface.(proto.Message); ok {
-					err := proto.Unmarshal(bytes, protoMessage)
-					if err != nil {
-						GetLogger().Error("proto.Unmarshal err:%v,fieldName:%v dataType:%v", err, fieldStruct.Name, dataTyp.Kind())
-					}
-					return err
+		if fieldInterface := convertStructToInterface(field); fieldInterface != nil {
+			if protoMessage, ok := fieldInterface.(proto.Message); ok {
+				err := proto.Unmarshal(bytes, protoMessage)
+				if err != nil {
+					GetLogger().Error("proto.Unmarshal err:%v,fieldName:%v dataType:%v", err, fieldStruct.Name, dataTyp.Kind())
 				}
+				return err
+			}
+			if _, ok := fieldInterface.(Saveable); ok {
+				GetLogger().Error("saveableField load err:%v,fieldName:%v dataType:%v", fieldStruct.Name, dataTyp.Kind())
 			}
 		}
 	}
 	if dataTyp.Kind() != reflect.Struct {
+		// 特殊结构体的赋值,如MapData[K comparable, V any]
+		if fieldInterface := convertStructToInterface(field); fieldInterface != nil {
+			if _, ok := fieldInterface.(Saveable); ok {
+				return LoadData(fieldInterface, data)
+			}
+		}
 		GetLogger().Error("unsupported type,fieldName:%v dataType:%v", fieldStruct.Name, dataTyp.Kind())
 		return errors.New(fmt.Sprintf("data not a struct,fieldName:%v", fieldStruct.Name))
 	}
@@ -319,38 +324,212 @@ func loadFieldStruct(obj any, field reflect.Value, data any, fieldStruct *Saveab
 func loadField(obj any, sourceData any, fieldStruct *SaveableField) error {
 	objVal := reflect.ValueOf(obj).Elem()
 	// 字段value
-	fieldVal := objVal.Field(fieldStruct.FieldIndex)
+	field := objVal.Field(fieldStruct.FieldIndex)
 	// 字段如果是nil,则尝试初始化
-	if !fieldStruct.InitNilField(fieldVal) {
+	if !fieldStruct.InitNilField(field) {
 		return errors.New("cant init nil field")
+	}
+	// 明文保存的特殊结构体需要特殊处理,如MapData[K comparable, V any]
+	if fieldStruct.IsPlain {
+		switch fieldStruct.StructField.Type.Kind() {
+		case reflect.Ptr:
+			if field.CanInterface() {
+				fieldInterface := field.Interface()
+				if _, ok := fieldInterface.(Saveable); ok {
+					return LoadData(fieldInterface, sourceData)
+				}
+			}
+		case reflect.Struct:
+			if fieldInterface := convertStructToInterface(field); fieldInterface != nil {
+				if _, ok := fieldInterface.(Saveable); ok {
+					return LoadData(fieldInterface, sourceData)
+				}
+			}
+		}
 	}
 	switch fieldStruct.StructField.Type.Kind() {
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
 		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64,
 		reflect.String, reflect.Bool, reflect.Float32, reflect.Float64, reflect.Complex64, reflect.Complex128:
-		return loadFieldBaseType(obj, fieldVal, sourceData, fieldStruct)
+		return loadFieldBaseType(obj, field, sourceData, fieldStruct)
 
 	case reflect.Ptr: // reflect.Interface?
-		if _, ok := fieldVal.Interface().(proto.Message); ok {
-			return loadFieldProto(obj, fieldVal, sourceData, fieldStruct)
-		} else {
-			return errors.New(fmt.Sprintf("ptr is not a proto.Message,fieldName:%v", fieldStruct.Name))
+		if _, ok := field.Interface().(proto.Message); ok {
+			return loadFieldProto(obj, field, sourceData, fieldStruct)
 		}
+		if _, ok := field.Interface().(Saveable); ok {
+			return LoadData(field.Interface(), sourceData)
+		}
+		return errors.New(fmt.Sprintf("ptr is not a proto.Message,fieldName:%v", fieldStruct.Name))
 
 	case reflect.Interface:
 		return errors.New("not support interface{} field")
 
 	case reflect.Slice, reflect.Array:
-		return loadFieldSlice(obj, fieldVal, sourceData, fieldStruct)
+		return loadFieldSlice(obj, field, sourceData, fieldStruct)
 
 	case reflect.Map:
-		return loadFieldMap(obj, fieldVal, sourceData, fieldStruct)
+		return loadFieldMap(obj, field, sourceData, fieldStruct)
 
 	case reflect.Struct:
-		return loadFieldStruct(obj, fieldVal, sourceData, fieldStruct)
+		return loadFieldStruct(obj, field, sourceData, fieldStruct)
 
 	default:
 		return ErrUnsupportedType
+	}
+}
+
+// 返回obj的map字段
+func getMapField(obj Saveable) (any, error) {
+	structCache := GetSaveableStruct(reflect.TypeOf(obj))
+	if structCache == nil {
+		return nil, ErrNotSaveableStruct
+	}
+	if structCache.IsSingleField() {
+		fieldStruct := structCache.Field
+		objVal := reflect.ValueOf(obj).Elem()
+		// 字段value
+		field := objVal.Field(fieldStruct.FieldIndex)
+		switch fieldStruct.StructField.Type.Kind() {
+		case reflect.Map:
+			return field.Interface(), nil
+
+		case reflect.Ptr:
+			if saveableField, ok := field.Interface().(Saveable); ok {
+				return getMapField(saveableField)
+			}
+
+		case reflect.Struct:
+			if fieldInterface := convertStructToInterface(field); fieldInterface != nil {
+				if saveableField, ok := fieldInterface.(Saveable); ok {
+					return getMapField(saveableField)
+				}
+			}
+		}
+	}
+	return nil, ErrUnsupportedType
+}
+
+// 从缓存加载字段
+func loadFieldFromCache(obj any, kvCache KvCache, cacheKey string, fieldStruct *SaveableField) (bool, error) {
+	cacheType, err := kvCache.Type(cacheKey)
+	if err == redis.Nil || cacheType == "" || cacheType == "none" {
+		return false, nil
+	}
+	objVal := reflect.ValueOf(obj).Elem()
+	field := objVal.Field(fieldStruct.FieldIndex)
+	// 字段如果是nil,则尝试初始化
+	if !fieldStruct.InitNilField(field) {
+		return true, errors.New("cant init nil field")
+	}
+	fieldType := fieldStruct.StructField.Type
+	switch cacheType {
+	case "string":
+		// string类型的缓存,支持明文保存的基础类型,protobuf,作为整体保存的二进制类型
+		cacheData, err := kvCache.Get(cacheKey)
+		if IsRedisError(err) {
+			GetLogger().Error("Get %v %v err:%v", cacheKey, cacheType, err)
+			return true, err
+		}
+		// 把缓存中的值转换成sourceData
+		var sourceData any
+		switch fieldType.Kind() {
+		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+			reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64,
+			reflect.String, reflect.Bool, reflect.Float32, reflect.Float64, reflect.Complex64, reflect.Complex128:
+			sourceData = ConvertStringToRealType(fieldType, cacheData)
+
+		case reflect.Slice, reflect.Array:
+			// TODO: slice,array,SliceData在缓存中是json string
+			if !field.CanInterface() {
+				return true, errors.New(fmt.Sprintf("%v CanInterface false", fieldStruct.Name))
+			}
+			jsonData, err := kvCache.Get(cacheKey)
+			if IsRedisError(err) {
+				GetLogger().Error("Get %v %v err:%v", cacheKey, cacheType, err)
+				return true, err
+			}
+			fieldInterface := field.Addr().Interface()
+			err = json.Unmarshal([]byte(jsonData), fieldInterface)
+			if err != nil {
+				GetLogger().Error("json.Unmarshal %v %v err:%v", cacheKey, field.Interface(), err)
+				return true, err
+			}
+			GetLogger().Debug("%v json.Unmarshal", cacheKey)
+			return true, nil
+
+		default:
+			// 除了基础类型,其他类型在string缓存中都是[]byte
+			sourceData = []byte(cacheData)
+		}
+		// 转换成[]byte后,就和从数据库加载数据一致了
+		return true, loadField(obj, sourceData, fieldStruct)
+
+	case "hash":
+		// hash类型的缓存支持map类型
+		if fieldStruct.IsInterfaceMap() {
+			// 特殊类型的map
+			// hash -> map[k]any
+			bytesMap := fieldStruct.NewBytesMap()
+			err = kvCache.GetMap(cacheKey, bytesMap)
+			if err == nil {
+				if interfaceMapLoader, ok := obj.(InterfaceMapLoader); ok {
+					err = interfaceMapLoader.LoadFromBytesMap(bytesMap)
+				}
+			}
+			if IsRedisError(err) {
+				GetLogger().Error("loadInterfaceMapErr %v %v err:%v", cacheKey, cacheType, err)
+				return true, err
+			}
+		} else {
+			var mapField any
+			switch fieldType.Kind() {
+			case reflect.Map:
+				// 普通map
+				mapField = field.Interface()
+
+			case reflect.Ptr:
+				// 可能是MapData
+				fieldInterface := field.Interface()
+				if saveableField, ok := fieldInterface.(Saveable); ok {
+					mapField, err = getMapField(saveableField)
+					if err != nil {
+						GetLogger().Error("getMapFieldErr %v %v err:%v", cacheKey, cacheType, err)
+						return true, err
+					}
+				}
+
+			case reflect.Struct:
+				if fieldInterface := convertStructToInterface(field); fieldInterface != nil {
+					if saveableField, ok := fieldInterface.(Saveable); ok {
+						mapField, err = getMapField(saveableField)
+						if err != nil {
+							GetLogger().Error("getMapFieldErr %v %v err:%v", cacheKey, cacheType, err)
+							return true, err
+						}
+					}
+				}
+
+			default:
+				GetLogger().Error("%v unsupport cache type:%v", cacheKey, cacheType)
+				return true, errors.New(fmt.Sprintf("%v unsupport cache type:%v", cacheKey, cacheType))
+			}
+			if mapField == nil {
+				GetLogger().Error("%v mapFieldNil cache type:%v", cacheKey, cacheType)
+				return true, errors.New(fmt.Sprintf("%v mapFieldNil cache type:%v", cacheKey, cacheType))
+			}
+			// hash -> map[k]v
+			err = kvCache.GetMap(cacheKey, mapField)
+			if IsRedisError(err) {
+				GetLogger().Error("GetMap %v %v err:%v", cacheKey, cacheType, err)
+				return true, err
+			}
+		}
+		return true, nil
+
+	default:
+		GetLogger().Error("%v unsupport cache type:%v", cacheKey, cacheType)
+		return true, errors.New(fmt.Sprintf("%v unsupport cache type:%v", cacheKey, cacheType))
 	}
 }
 
@@ -363,88 +542,13 @@ func LoadFromCache(obj interface{}, kvCache KvCache, cacheKey string) (bool, err
 	if structCache == nil {
 		return false, nil
 	}
-	reflectVal := reflect.ValueOf(obj).Elem()
 	if structCache.IsSingleField() {
-		cacheType, err := kvCache.Type(cacheKey)
-		if err == redis.Nil || cacheType == "" || cacheType == "none" {
-			return false, nil
-		}
-		fieldCache := structCache.Field
-		val := reflectVal.Field(fieldCache.FieldIndex)
-		if cacheType == "string" {
-			if fieldCache.StructField.Type.Kind() == reflect.Ptr || fieldCache.StructField.Type.Kind() == reflect.Interface {
-				if !fieldCache.InitNilField(val) {
-					GetLogger().Error("nil %v", fieldCache.Name)
-					return true, errors.New(fmt.Sprintf("%v nil", fieldCache.Name))
-				}
-				if !val.CanInterface() {
-					return true, errors.New(fmt.Sprintf("%v CanInterface false", fieldCache.Name))
-				}
-				if protoMessage, ok := val.Interface().(proto.Message); ok {
-					// []byte -> proto.Message
-					err = kvCache.GetProto(cacheKey, protoMessage)
-					if IsRedisError(err) {
-						GetLogger().Error("GetProto %v %v err:%v", cacheKey, cacheType, err)
-						return true, err
-					}
-					return true, nil
-				}
-			} else if fieldCache.StructField.Type.Kind() == reflect.Slice || fieldCache.StructField.Type.Kind() == reflect.Array {
-				if !fieldCache.InitNilField(val) {
-					GetLogger().Error("nil %v", fieldCache.Name)
-					return true, errors.New(fmt.Sprintf("%v nil", fieldCache.Name))
-				}
-				if !val.CanInterface() {
-					return true, errors.New(fmt.Sprintf("%v CanInterface false", fieldCache.Name))
-				}
-				jsonData, err := kvCache.Get(cacheKey)
-				if IsRedisError(err) {
-					GetLogger().Error("Get %v %v err:%v", cacheKey, cacheType, err)
-					return true, err
-				}
-				fieldInterface := val.Addr().Interface()
-				err = json.Unmarshal([]byte(jsonData), fieldInterface)
-				if err != nil {
-					GetLogger().Error("json.Unmarshal %v %v err:%v", cacheKey, val.Interface(), err)
-					return true, err
-				}
-				GetLogger().Debug("%v json.Unmarshal", cacheKey)
-				return true, nil
-			}
-			return true, errors.New(fmt.Sprintf("unsupport kind:%v cacheKey:%v cacheType:%v", fieldCache.StructField.Type.Kind(), cacheKey, cacheType))
-		} else if cacheType == "hash" {
-			if !fieldCache.InitNilField(val) {
-				GetLogger().Error("nil %v", fieldCache.Name)
-				return true, errors.New(fmt.Sprintf("%v nil", fieldCache.Name))
-			}
-			if !val.CanInterface() {
-				return true, errors.New(fmt.Sprintf("%v CanInterface false", fieldCache.Name))
-			}
-			if fieldCache.IsInterfaceMap() {
-				// hash -> map[k]any
-				bytesMap := fieldCache.NewBytesMap()
-				err = kvCache.GetMap(cacheKey, bytesMap)
-				if err == nil {
-					if interfaceMapLoader, ok := obj.(InterfaceMapLoader); ok {
-						err = interfaceMapLoader.LoadFromBytesMap(bytesMap)
-					}
-				}
-			} else {
-				// hash -> map[k]v
-				err = kvCache.GetMap(cacheKey, val.Interface())
-			}
-			if IsRedisError(err) {
-				GetLogger().Error("GetMap %v %v err:%v", cacheKey, cacheType, err)
-				return true, err
-			}
-			return true, nil
-		} else {
-			GetLogger().Error("%v unsupport cache type:%v", cacheKey, cacheType)
-			return true, errors.New(fmt.Sprintf("%v unsupport cache type:%v", cacheKey, cacheType))
-		}
+		fieldStruct := structCache.Field
+		return loadFieldFromCache(obj, kvCache, cacheKey, fieldStruct)
 	} else {
+		objVal := reflect.ValueOf(obj).Elem()
 		for _, fieldCache := range structCache.Children {
-			val := reflectVal.Field(fieldCache.FieldIndex)
+			val := objVal.Field(fieldCache.FieldIndex)
 			if !fieldCache.InitNilField(val) {
 				GetLogger().Error("nil %v", fieldCache.Name)
 				return true, errors.New(fmt.Sprintf("%v nil", fieldCache.Name))

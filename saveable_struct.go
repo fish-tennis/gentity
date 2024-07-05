@@ -134,14 +134,17 @@ func (s *safeSaveableStructsMap) Set(key reflect.Type, value *SaveableStruct) {
 	defer s.l.Unlock()
 	s.m[key] = value
 	if value != nil {
+		if key.Kind() == reflect.Ptr {
+			key = key.Elem()
+		}
 		if len(value.Children) == 0 {
-			GetLogger().Debug("SaveableStruct: %v plain:%v", key, value.Field.IsPlain)
+			GetLogger().Info("SaveableStruct: %v plain:%v", key, value.Field.IsPlain)
 		} else {
 			var children []string
 			for _, child := range value.Children {
 				children = append(children, child.Name)
 			}
-			GetLogger().Debug("SaveableStruct: %v children:%v", key, children)
+			GetLogger().Info("SaveableStruct: %v children:%v", key, children)
 		}
 	}
 }
@@ -229,7 +232,7 @@ func GetSaveableStructChild(reflectType reflect.Type, defaultPlain bool) *Saveab
 			Name:        name,
 		}
 		newStruct.Field = fieldCache
-		GetLogger().Debug("db %v.%v plain:%v", reflectType.Name(), name, isPlain)
+		GetLogger().Info("db %v.%v plain:%v", reflectType.Name(), name, isPlain)
 	}
 	newStruct.Children = make([]*SaveableField, 0)
 	// 检查child字段
@@ -275,7 +278,7 @@ func GetSaveableStructChild(reflectType reflect.Type, defaultPlain bool) *Saveab
 			IsPlain:     isChildPlain,
 		}
 		newStruct.Children = append(newStruct.Children, fieldCache)
-		GetLogger().Debug("child %v.%v plain:%v", reflectType.Name(), name, isChildPlain)
+		GetLogger().Info("child %v.%v plain:%v", reflectType.Name(), name, isChildPlain)
 		GetSaveableStructChild(fieldCache.StructField.Type, isChildPlain)
 	}
 	if newStruct.Field == nil && len(newStruct.Children) == 0 {

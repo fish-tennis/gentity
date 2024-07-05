@@ -10,6 +10,7 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 	"google.golang.org/protobuf/proto"
 	"testing"
+	"time"
 )
 
 var (
@@ -90,7 +91,7 @@ func TestFindPlayerId(t *testing.T) {
 }
 
 func deletePlayer(mongoDb *gentity.MongoDb, id int64) {
-	mongoDb.GetMongoDatabase().Collection(_collectionName).FindOneAndDelete(context.Background(), bson.D{{"id", id}})
+	mongoDb.GetMongoDatabase().Collection(_collectionName).FindOneAndDelete(context.Background(), bson.D{{"_id", id}})
 }
 
 // 测试缓存接口
@@ -121,12 +122,12 @@ func TestDbCache(t *testing.T) {
 		CfgId:    2,
 		Progress: 5,
 	}
-	quest.Quests.Add(questData2.CfgId, questData2)
+	quest.Quests.Set(questData2.CfgId, questData2)
 	questData3 := &pb.QuestData{
 		CfgId:    3,
 		Progress: 6,
 	}
-	quest.Quests.Add(questData3.CfgId, questData3)
+	quest.Quests.Set(questData3.CfgId, questData3)
 	// 只会把quest组件保存到缓存
 	player1.SaveCache(kvCache)
 
@@ -148,6 +149,20 @@ func TestDbCache(t *testing.T) {
 	player1.SaveCache(kvCache)
 
 	player1.GetStruct().Set(11, 12)
+	player1.SaveCache(kvCache)
+
+	bag := player1.GetBag()
+	for i := 0; i < 3; i++ {
+		bag.BagCountItem.AddItem(int32(i+1), int32((i+1)*10))
+		bag.BagUniqueItem.AddUniqueItem(&pb.UniqueItem{
+			UniqueId: time.Now().Unix() + int64(i*1000),
+			CfgId:    int32(i+1) + int32(1000),
+		})
+		bag.TestUniqueItem.Add(&pb.UniqueItem{
+			UniqueId: time.Now().Unix() + int64(i*10000),
+			CfgId:    int32(i+1) + int32(10000),
+		})
+	}
 	player1.SaveCache(kvCache)
 
 	// 只会把修改过数据的组件更新到数据库
@@ -173,6 +188,9 @@ func TestDbCache(t *testing.T) {
 	t.Logf("Slice:%v", loadPlayer.GetSlice().Data)
 	s := loadPlayer.GetStruct()
 	t.Logf("Struct:%v", &s.Data)
+	t.Logf("Bag.CountItem:%v", loadPlayer.GetBag().BagCountItem.Data)
+	t.Logf("Bag.UniqueItem:%v", loadPlayer.GetBag().BagUniqueItem.Data)
+	t.Logf("Bag.TestUniqueItem:%v", loadPlayer.GetBag().TestUniqueItem.Data)
 }
 
 // 测试从缓存修复数据的接口
@@ -203,7 +221,7 @@ func TestFixDataFromCache(t *testing.T) {
 		CfgId:    2,
 		Progress: 5,
 	}
-	quest.Quests.Add(questData2.CfgId, questData2)
+	quest.Quests.Set(questData2.CfgId, questData2)
 	player1.SaveCache(kvCache)
 
 	interfaceMap := player1.GetInterfaceMap()
@@ -223,6 +241,20 @@ func TestFixDataFromCache(t *testing.T) {
 	slice.Add(&pb.QuestData{CfgId: 5, Progress: 8})
 	player1.SaveCache(kvCache)
 
+	bag := player1.GetBag()
+	for i := 0; i < 3; i++ {
+		bag.BagCountItem.AddItem(int32(i+1), int32((i+1)*10))
+		bag.BagUniqueItem.AddUniqueItem(&pb.UniqueItem{
+			UniqueId: time.Now().Unix() + int64(i*1000),
+			CfgId:    int32(i+1) + int32(1000),
+		})
+		bag.TestUniqueItem.Add(&pb.UniqueItem{
+			UniqueId: time.Now().Unix() + int64(i*10000),
+			CfgId:    int32(i+1) + int32(10000),
+		})
+	}
+	player1.SaveCache(kvCache)
+
 	fixPlayer := newTestPlayer(1, 1)
 	// 上面player1的修改数据之保存到了缓存,并没有保存到数据库
 	// 所以这里模拟了player1的修改数据没保存到数据库的情景
@@ -238,6 +270,11 @@ func TestFixDataFromCache(t *testing.T) {
 	t.Logf("InterfaceMap:%v", loadPlayer.GetInterfaceMap().InterfaceMap)
 	t.Logf("Array:%v", loadPlayer.GetArray().Array)
 	t.Logf("Slice:%v", loadPlayer.GetSlice().Data)
+	s := loadPlayer.GetStruct()
+	t.Logf("Struct:%v", &s.Data)
+	t.Logf("Bag.CountItem:%v", loadPlayer.GetBag().BagCountItem.Data)
+	t.Logf("Bag.UniqueItem:%v", loadPlayer.GetBag().BagUniqueItem.Data)
+	t.Logf("Bag.TestUniqueItem:%v", loadPlayer.GetBag().TestUniqueItem.Data)
 }
 
 // 测试自动注册

@@ -94,6 +94,21 @@ func SaveChangedDataToCache(kvCache KvCache, obj interface{}, cacheKeyName strin
 			}
 		} else {
 			if val.Kind() != reflect.Map {
+				// 特殊结构体需要特殊处理,如MapData[K comparable, V any]
+				switch val.Kind() {
+				case reflect.Ptr:
+					if _, ok := val.Interface().(Saveable); ok {
+						SaveChangedDataToCache(kvCache, val.Interface(), cacheKeyName)
+						return
+					}
+				case reflect.Struct:
+					if valInterface := convertStructToInterface(val); valInterface != nil {
+						if _, ok := valInterface.(Saveable); ok {
+							SaveChangedDataToCache(kvCache, valInterface, cacheKeyName)
+							return
+						}
+					}
+				}
 				GetLogger().Error("%v unsupport kind:%v", cacheKeyName, val.Kind())
 				return
 			}
@@ -124,24 +139,23 @@ func SaveValueToCache(kvCache KvCache, cacheKeyName string, val reflect.Value) {
 		}
 
 	case reflect.Struct:
-		if val.CanAddr() {
-			ptrVal := val.Addr()
-			if ptrVal.CanInterface() {
-				cacheData := ptrVal.Interface()
-				switch realData := cacheData.(type) {
-				case proto.Message:
-					// proto.Message -> []byte
-					err := kvCache.Set(cacheKeyName, realData, 0)
-					if err != nil {
-						GetLogger().Error("%v cache err:%v", cacheKeyName, err.Error())
-						return
-					}
-				default:
-					GetLogger().Error("%v cache err:unsupport type:%v", cacheKeyName, reflect.TypeOf(realData))
-					return
-				}
-			}
+		if cacheData := convertStructToInterface(val); cacheData != nil {
+			SaveValueToCache(kvCache, cacheKeyName, reflect.ValueOf(cacheData))
+			return
+			//switch realData := cacheData.(type) {
+			//case proto.Message:
+			//	// proto.Message -> []byte
+			//	err := kvCache.Set(cacheKeyName, realData, 0)
+			//	if err != nil {
+			//		GetLogger().Error("%v cache err:%v", cacheKeyName, err.Error())
+			//		return
+			//	}
+			//default:
+			//	GetLogger().Error("%v cache err:unsupport type:%v", cacheKeyName, reflect.TypeOf(realData))
+			//	return
+			//}
 		}
+		GetLogger().Error("%v cache err:unsupport type:%v", cacheKeyName, val)
 
 	case reflect.Map:
 		// map格式作为一个整体缓存时,需要先删除之前的数据
@@ -159,6 +173,7 @@ func SaveValueToCache(kvCache KvCache, cacheKeyName string, val reflect.Value) {
 		}
 
 	case reflect.Slice, reflect.Array:
+		// TODO: elem类型?
 		cacheData := val.Interface()
 		jsonBytes, err := json.Marshal(cacheData)
 		if err != nil {
@@ -356,7 +371,7 @@ func saveFieldMapByKeyType[K comparable](obj interface{}, field reflect.Value, p
 		// map的value是proto格式,进行序列化
 		key := keyFn(it)
 		valueInterface := it.Value().Interface()
-		v, err := convertInterface(valueInterface, parentName, fieldStruct)
+		v, err := getInterfaceSaveData(valueInterface, parentName, fieldStruct)
 		if err != nil {
 			GetLogger().Error("%v.%v convert key:%v err:%v", parentName, fieldStruct.Name, key, err.Error())
 			return nil, err
@@ -424,7 +439,7 @@ func saveFieldSlice(obj interface{}, field reflect.Value, parentName string, fie
 		for i := 0; i < field.Len(); i++ {
 			sliceElem := field.Index(i)
 			valueInterface := sliceElem.Interface()
-			v, err := convertInterface(valueInterface, parentName, fieldStruct)
+			v, err := getInterfaceSaveData(valueInterface, parentName, fieldStruct)
 			if err != nil {
 				GetLogger().Error("%v.%v convert index:%v err:%v", parentName, fieldStruct.Name, i, err.Error())
 				return nil, err
@@ -440,41 +455,60 @@ func saveFieldSlice(obj interface{}, field reflect.Value, parentName string, fie
 }
 
 func saveFieldPtr(obj interface{}, field reflect.Value, parentName string, fieldStruct *SaveableField) (interface{}, error) {
-	// 模块的保存数据是一个proto.Message
-	// proto.Message -> []byte
 	fieldInterface := field.Interface()
-	return convertInterface(fieldInterface, parentName, fieldStruct)
+	return getInterfaceSaveData(fieldInterface, parentName, fieldStruct)
 }
 
 func saveFieldStruct(obj interface{}, field reflect.Value, parentName string, fieldStruct *SaveableField) (interface{}, error) {
-	if field.CanAddr() {
-		ptrVal := field.Addr()
-		if ptrVal.CanInterface() {
-			ptrInterface := ptrVal.Interface()
-			return convertInterface(ptrInterface, parentName, fieldStruct)
-		}
+	if fieldInterface := convertStructToInterface(field); fieldInterface != nil {
+		return getInterfaceSaveData(fieldInterface, parentName, fieldStruct)
 	}
 	GetLogger().Error("%v.%v not a addr struct type:%v", parentName, fieldStruct.Name, field.Type().String())
 	return field.Interface(), nil
 }
 
-func convertInterface(fieldInterface interface{}, parentName string, fieldStruct *SaveableField) (interface{}, error) {
+func convertStructToInterface(field reflect.Value) any {
+	if !field.CanAddr() {
+		return nil
+	}
+	fieldAddr := field.Addr()
+	if !fieldAddr.CanInterface() {
+		return nil
+	}
+	return fieldAddr.Interface()
+}
+
+func convertStructToSaveable(field reflect.Value) Saveable {
+	if fieldInterface := convertStructToInterface(field); fieldInterface != nil {
+		if saveable, ok := fieldInterface.(Saveable); ok {
+			return saveable
+		}
+	}
+	return nil
+}
+
+func getInterfaceSaveData(fieldInterface interface{}, parentName string, fieldStruct *SaveableField) (interface{}, error) {
 	if protoMessage, ok := fieldInterface.(proto.Message); ok {
 		return proto.Marshal(protoMessage)
 	} else {
 		// Saveable
-		if valueSaveable, ok := fieldInterface.(Saveable); ok {
-			valueSaveData, valueSaveErr := GetSaveData(valueSaveable, parentName)
-			if valueSaveErr != nil {
-				GetLogger().Error("%v.%v Saveable err:%v", parentName, fieldStruct.Name, valueSaveErr.Error())
-				return nil, valueSaveErr
-			}
-			return valueSaveData, nil
-		} else {
-			// TODO:扩展一个自定义序列化接口 customSerialize()(interface{}, error)
-			GetLogger().Error("%v.%v not Saveable type:%v", parentName, fieldStruct.Name, reflect.TypeOf(fieldInterface).String())
-			return nil, errors.New(fmt.Sprintf("%v.%v not Saveable type:%v", parentName, fieldStruct.Name, reflect.TypeOf(fieldInterface).String()))
+		return getSaveableSaveData(fieldInterface, parentName, fieldStruct)
+	}
+}
+
+func getSaveableSaveData(fieldInterface interface{}, parentName string, fieldStruct *SaveableField) (interface{}, error) {
+	// Saveable
+	if valueSaveable, ok := fieldInterface.(Saveable); ok {
+		valueSaveData, valueSaveErr := GetSaveData(valueSaveable, parentName)
+		if valueSaveErr != nil {
+			GetLogger().Error("%v.%v Saveable err:%v", parentName, fieldStruct.Name, valueSaveErr.Error())
+			return nil, valueSaveErr
 		}
+		return valueSaveData, nil
+	} else {
+		// TODO:扩展一个自定义序列化接口 customSerialize()(interface{}, error)
+		GetLogger().Error("%v.%v not Saveable type:%v", parentName, fieldStruct.Name, reflect.TypeOf(fieldInterface).String())
+		return nil, errors.New(fmt.Sprintf("%v.%v not Saveable type:%v", parentName, fieldStruct.Name, reflect.TypeOf(fieldInterface).String()))
 	}
 }
 
@@ -492,9 +526,30 @@ func GetSaveData(obj interface{}, parentName string) (interface{}, error) {
 		if util.IsValueNil(field) {
 			return nil, nil
 		}
-		// 明文保存的数据,直接返回原始数据
+		// 明文保存的数据
 		if fieldStruct.IsPlain {
-			return field.Interface(), nil
+			// 明文保存的特殊结构体需要特殊处理,如MapData[K comparable, V any]
+			switch field.Kind() {
+			case reflect.Ptr:
+				if field.CanInterface() {
+					fieldInterface := field.Interface()
+					if _, ok := fieldInterface.(Saveable); ok {
+						return getSaveableSaveData(fieldInterface, parentName, fieldStruct)
+					}
+				}
+			case reflect.Struct:
+				if fieldInterface := convertStructToInterface(field); fieldInterface != nil {
+					if _, ok := fieldInterface.(Saveable); ok {
+						return getSaveableSaveData(fieldInterface, parentName, fieldStruct)
+					}
+				}
+			}
+			fieldInterface := field.Interface()
+			if _, ok := fieldInterface.(Saveable); ok {
+				return getSaveableSaveData(field.Interface(), parentName, fieldStruct)
+			}
+			// 明文保存的普通数据,直接返回原始数据
+			return fieldInterface, nil
 		}
 		// 非明文保存的数据,一般用于对proto进行序列化
 		switch field.Kind() {
