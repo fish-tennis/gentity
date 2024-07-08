@@ -17,10 +17,10 @@ Entity-Component模式是类似Unity的GameObject-Component的实体组件模式
 - 组件事件分发
 - 组件事件响应接口注册
 
-## 实体数据
+## 数据库和缓存
 实体数据的加载和保存是游戏服务器最基础的功能,gentity利用go的struct tag,大大简化了实体数据加载和保存的接口
 
-gentity抽象出了实体的数据库接口EntityDb和实体的缓存接口KvCache
+gentity抽象出了实体的数据库接口EntityDb和实体的缓存接口KvCache,并且可以自动检查增量更新,只把修改过的数据保存到数据库和缓存
 
 gentity内置了EntityDb的mongodb实现,和KvCache的redis实现
 
