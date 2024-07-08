@@ -265,6 +265,7 @@ func convertValueToStringOrInterface(val reflect.Value) (interface{}, error) {
 		reflect.Complex64, reflect.Complex128,
 		reflect.String:
 		return convertValueToString(val)
+
 	case reflect.Interface, reflect.Ptr:
 		if !util.IsValueNil(val) {
 			if !val.CanInterface() {
@@ -292,6 +293,15 @@ func convertValueToStringOrInterface(val reflect.Value) (interface{}, error) {
 			}
 			return i, nil
 		}
+
+	case reflect.Struct:
+		valInterface := convertStructToInterface(val)
+		if valInterface == nil {
+			GetLogger().Error("convertStructToInterfaceErr type:%v", val.Kind())
+			return nil, errors.New(fmt.Sprintf("convertStructToInterfaceErr type:%v", val.Kind()))
+		}
+		return convertValueToStringOrInterface(reflect.ValueOf(valInterface))
+
 	default:
 		GetLogger().Error("unsupport type:%v", val.Kind())
 		return nil, errors.New(fmt.Sprintf("unsupport type:%v", val.Kind()))

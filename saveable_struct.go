@@ -138,13 +138,13 @@ func (s *safeSaveableStructsMap) Set(key reflect.Type, value *SaveableStruct) {
 			key = key.Elem()
 		}
 		if len(value.Children) == 0 {
-			GetLogger().Info("SaveableStruct: %v plain:%v", key, value.Field.IsPlain)
+			GetLogger().Info("SaveableStruct: %v plain:%v", key.Name(), value.Field.IsPlain)
 		} else {
 			var children []string
 			for _, child := range value.Children {
 				children = append(children, child.Name)
 			}
-			GetLogger().Info("SaveableStruct: %v children:%v", key, children)
+			GetLogger().Info("SaveableStruct: %v children:%v", key.Name(), children)
 		}
 	}
 }

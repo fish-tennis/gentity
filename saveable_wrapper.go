@@ -33,6 +33,22 @@ func NewMapData[K comparable, V any]() *MapData[K, V] {
 	}
 }
 
+// MapData+BaseComponent
+type MapDataComponent[K comparable, V any] struct {
+	BaseComponent
+	MapData[K, V]
+}
+
+func NewMapDataComponent[K comparable, V any](entity Entity, componentName string) *MapDataComponent[K, V] {
+	return &MapDataComponent[K, V]{
+		BaseComponent: BaseComponent{
+			entity: entity,
+			name:   componentName,
+		},
+		MapData: *NewMapData[K, V](),
+	}
+}
+
 // slice类型的数据的辅助类
 type SliceData[E any] struct {
 	BaseDirtyMark

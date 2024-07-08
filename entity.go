@@ -153,13 +153,13 @@ func NewDataComponent(entity Entity, componentName string) *DataComponent {
 	}
 }
 
-type MapDataComponent struct {
+type MapComponent struct {
 	BaseComponent
 	BaseMapDirtyMark
 }
 
-func NewMapDataComponent(entity Entity, componentName string) *MapDataComponent {
-	return &MapDataComponent{
+func NewMapComponent(entity Entity, componentName string) *MapComponent {
+	return &MapComponent{
 		BaseComponent: BaseComponent{
 			entity: entity,
 			name:   componentName,

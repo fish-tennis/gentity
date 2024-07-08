@@ -142,18 +142,6 @@ func SaveValueToCache(kvCache KvCache, cacheKeyName string, val reflect.Value) {
 		if cacheData := convertStructToInterface(val); cacheData != nil {
 			SaveValueToCache(kvCache, cacheKeyName, reflect.ValueOf(cacheData))
 			return
-			//switch realData := cacheData.(type) {
-			//case proto.Message:
-			//	// proto.Message -> []byte
-			//	err := kvCache.Set(cacheKeyName, realData, 0)
-			//	if err != nil {
-			//		GetLogger().Error("%v cache err:%v", cacheKeyName, err.Error())
-			//		return
-			//	}
-			//default:
-			//	GetLogger().Error("%v cache err:unsupport type:%v", cacheKeyName, reflect.TypeOf(realData))
-			//	return
-			//}
 		}
 		GetLogger().Error("%v cache err:unsupport type:%v", cacheKeyName, val)
 
@@ -173,7 +161,6 @@ func SaveValueToCache(kvCache KvCache, cacheKeyName string, val reflect.Value) {
 		}
 
 	case reflect.Slice, reflect.Array:
-		// TODO: elem类型?
 		cacheData := val.Interface()
 		jsonBytes, err := json.Marshal(cacheData)
 		if err != nil {

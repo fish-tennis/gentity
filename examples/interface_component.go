@@ -14,8 +14,8 @@ const (
 func init() {
 	registerPlayerComponentCtor(ComponentNameInterfaceMap, 100, func(player *testPlayer, playerData *pb.PlayerData) gentity.Component {
 		component := &interfaceMapComponent{
-			MapDataComponent: *gentity.NewMapDataComponent(player, ComponentNameInterfaceMap),
-			InterfaceMap:     make(map[string]interface{}),
+			MapComponent: *gentity.NewMapComponent(player, ComponentNameInterfaceMap),
+			InterfaceMap: make(map[string]interface{}),
 		}
 		// 该组件使用了动态结构,不能使用gentity.LoadData来自动加载数据
 		// 需要自己解析出具体的数据
@@ -26,7 +26,7 @@ func init() {
 
 // 动态数据组件
 type interfaceMapComponent struct {
-	gentity.MapDataComponent
+	gentity.MapComponent
 	// 动态的数据结构
 	InterfaceMap map[string]interface{} `db:"InterfaceMap"`
 }
