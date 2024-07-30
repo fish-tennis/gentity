@@ -10,7 +10,12 @@ import (
 // packageName是*.proto文件里定义的package名
 func GetMessageIdByComponentMessageName(packageName, componentStructName, messageName string) int32 {
 	// enum Message的全名举例:gserver.CmdMoney
-	enumTypeName := fmt.Sprintf("%v.Cmd%v", packageName, componentStructName)
+	enumTypeName := ""
+	if packageName != "" {
+		enumTypeName = fmt.Sprintf("%v.Cmd%v", packageName, componentStructName)
+	} else {
+		enumTypeName = fmt.Sprintf("Cmd%v", componentStructName)
+	}
 	enumType, err := protoregistry.GlobalTypes.FindEnumByName(protoreflect.FullName(enumTypeName))
 	if err != nil {
 		//gentity.Debug("%v err:%v", enumTypeName, err)

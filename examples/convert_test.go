@@ -92,7 +92,7 @@ func TestSaveableStruct(t *testing.T) {
 		Any any `db:""`
 	}
 	s := gentity.GetSaveableStruct(reflect.TypeOf(&AnyField{}))
-	t.Logf("Field:%v", s)
+	t.Logf("FieldStruct:%v", s)
 
 	type Item struct {
 		S string
@@ -103,7 +103,7 @@ func TestSaveableStruct(t *testing.T) {
 		ItemPtr *Item
 	}
 	s = gentity.GetSaveableStruct(reflect.TypeOf(&StructField{}))
-	t.Logf("Field:%v", s)
+	t.Logf("FieldStruct:%v", s)
 
 	obj := &StructField{}
 	obj.Item.CfgId = 123
@@ -145,7 +145,7 @@ func TestSaveableStruct(t *testing.T) {
 
 func TestChildSaveableStruct(t *testing.T) {
 	gnet.SetLogLevel(-1)
-	//bag := &bagComponent{
+	//bag := &Bag{
 	//	BagCountItem: &BagCountItem{},
 	//	BagUniqueItem: &BagUniqueItem{
 	//		Data: make(map[int64]int32),

@@ -12,8 +12,8 @@ const (
 
 // 利用go的init进行组件的自动注册
 func init() {
-	registerPlayerComponentCtor(ComponentNameArray, 0, func(player *testPlayer, playerData *pb.PlayerData) gentity.Component {
-		component := &arrayComponent{
+	registerPlayerComponentCtor(ComponentNameArray, 0, func(player *Player, playerData *pb.PlayerData) gentity.Component {
+		component := &ArrayComponent{
 			DataComponent: *gentity.NewDataComponent(player, ComponentNameArray),
 		}
 		gentity.LoadData(component, playerData.GetArray())
@@ -22,11 +22,11 @@ func init() {
 }
 
 // 固定长度数组测试
-type arrayComponent struct {
+type ArrayComponent struct {
 	gentity.DataComponent
 	Array [10]int32 `db:"plain"`
 }
 
-func (this *testPlayer) GetArray() *arrayComponent {
-	return this.GetComponentByName(ComponentNameArray).(*arrayComponent)
+func (this *Player) GetArray() *ArrayComponent {
+	return this.GetComponentByName(ComponentNameArray).(*ArrayComponent)
 }

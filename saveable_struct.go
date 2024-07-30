@@ -70,10 +70,24 @@ func (this *SaveableField) InitNilField(val reflect.Value) bool {
 //
 //	这种类型的map,无法直接使用gentity.LoadData来加载数据,因为不知道map的value具体是什么类型
 func (this *SaveableField) IsInterfaceMap() bool {
-	if this.StructField.Type.Kind() != reflect.Map {
+	typ := this.StructField.Type
+	if typ.Kind() == reflect.Ptr {
+		typ = typ.Elem()
+	}
+	if typ.Kind() == reflect.Struct {
+		childStruct := GetSaveableStruct(typ)
+		if childStruct == nil {
+			return false
+		}
+		if !childStruct.IsSingleField() {
+			return false
+		}
+		return childStruct.Field.IsInterfaceMap()
+	}
+	if typ.Kind() != reflect.Map {
 		return false
 	}
-	valueType := this.StructField.Type.Elem()
+	valueType := typ.Elem()
 	return valueType.Kind() == reflect.Interface
 }
 
@@ -282,6 +296,7 @@ func GetSaveableStructChild(reflectType reflect.Type, defaultPlain bool) *Saveab
 		GetSaveableStructChild(fieldCache.StructField.Type, isChildPlain)
 	}
 	if newStruct.Field == nil && len(newStruct.Children) == 0 {
+		// 无保存数据的结构,设置nil,下次调用时,会直接返回nil
 		_saveableStructsMap.Set(reflectType, nil)
 		return nil
 	}

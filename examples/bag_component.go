@@ -13,8 +13,8 @@ const (
 
 // 利用go的init进行组件的自动注册
 func init() {
-	registerPlayerComponentCtor(ComponentNameBag, 0, func(player *testPlayer, playerData *pb.PlayerData) gentity.Component {
-		component := &bagComponent{
+	registerPlayerComponentCtor(ComponentNameBag, 0, func(player *Player, playerData *pb.PlayerData) gentity.Component {
+		component := &Bag{
 			BaseComponent:  *gentity.NewBaseComponent(player, ComponentNameBag),
 			BagCountItem:   new(BagCountItem),
 			BagUniqueItem:  new(BagUniqueItem),
@@ -29,7 +29,7 @@ func init() {
 
 // 背包模块
 // 演示通过组合模式,整合多个不同的子背包模块,提供更高一级的背包接口
-type bagComponent struct {
+type Bag struct {
 	gentity.BaseComponent
 	BagCountItem  *BagCountItem  `child:"CountItem"`
 	BagUniqueItem *BagUniqueItem `child:"UniqueItem"`
@@ -37,8 +37,8 @@ type bagComponent struct {
 	TestUniqueItem *gentity.SliceData[*pb.UniqueItem] `child:"TestUniqueItem"`
 }
 
-func (this *testPlayer) GetBag() *bagComponent {
-	return this.GetComponentByName(ComponentNameBag).(*bagComponent)
+func (this *Player) GetBag() *Bag {
+	return this.GetComponentByName(ComponentNameBag).(*Bag)
 }
 
 // 有数量的物品背包

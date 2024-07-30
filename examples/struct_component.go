@@ -12,8 +12,8 @@ const (
 
 // 利用go的init进行组件的自动注册
 func init() {
-	registerPlayerComponentCtor(ComponentNameStruct, 0, func(player *testPlayer, playerData *pb.PlayerData) gentity.Component {
-		component := &structComponent{
+	registerPlayerComponentCtor(ComponentNameStruct, 0, func(player *Player, playerData *pb.PlayerData) gentity.Component {
+		component := &StructComponent{
 			DataComponent: *gentity.NewDataComponent(player, ComponentNameStruct),
 		}
 		gentity.LoadData(component, playerData.GetStruct())
@@ -21,16 +21,16 @@ func init() {
 	})
 }
 
-type structComponent struct {
+type StructComponent struct {
 	gentity.DataComponent
 	Data pb.QuestData `db:""`
 }
 
-func (this *testPlayer) GetStruct() *structComponent {
-	return this.GetComponentByName(ComponentNameStruct).(*structComponent)
+func (this *Player) GetStruct() *StructComponent {
+	return this.GetComponentByName(ComponentNameStruct).(*StructComponent)
 }
 
-func (this *structComponent) Set(cfgId, progress int32) {
+func (this *StructComponent) Set(cfgId, progress int32) {
 	this.Data.CfgId = cfgId
 	this.Data.Progress = progress
 	this.SetDirty()

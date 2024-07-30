@@ -31,9 +31,10 @@ gentity内置了EntityDb的mongodb实现,和KvCache的redis实现
 ```go
 // entity的一个组件
 type Money struct {
-	// 该字段必须导出(首字母大写)
-	// 使用struct tag来标记该字段需要存数据库,可以设置存储字段名(proto格式存mongo时,使用全小写格式)
-	Data *pb.Money `db:"Money"`
+    DataComponent
+    // 该字段必须导出(首字母大写)
+    // 使用struct tag来标记该字段需要存数据库,可以设置存储字段名(proto格式存mongo时,使用全小写格式)
+    Data *pb.Money `db:""`
 }
 //entity.SaveDb()会自动把Money.Data保存到mongo,保存时会自动进行proto序列化
 //entity.SaveCache()会自动把Money.Data缓存到redis,保存时会自动进行proto序列化
@@ -43,8 +44,9 @@ type Money struct {
 ```go
 // 玩家基础信息组件
 type BaseInfo struct {
-	// plain表示明文存储,在保存到mongodb时,不会进行proto序列化
-	Data *pb.BaseInfo `db:"BaseInfo;plain"`
+    DataComponent
+    // plain表示明文存储,在保存到mongodb时,不会进行proto序列化
+    Data *pb.BaseInfo `db:"plain"`
 }
 ```
 
@@ -52,12 +54,13 @@ type BaseInfo struct {
 ```go
 // 任务组件
 type Quest struct {
-	// 保存数据的子模块:已完成的任务 使用明文保存方式
-	// wrapper of []int32
-	Finished *gentity.SliceData[int32] `child:"Finished;plain"`
-	// 保存数据的子模块:当前任务列表
-	// wrapper of map[int32]*pb.QuestData
-	Quests *gentity.MapData[int32, *pb.QuestData] `child:"Quests"`
+    BaseComponent
+    // 保存数据的子模块:已完成的任务 使用明文保存方式
+    // wrapper of []int32
+    Finished *gentity.SliceData[int32] `child:"Finished;plain"`
+    // 保存数据的子模块:当前任务列表
+    // wrapper of map[int32]*pb.QuestData
+    Quests *gentity.MapData[int32, *pb.QuestData] `child:"Quests"`
 }
 ```
 

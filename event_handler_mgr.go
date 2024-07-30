@@ -32,6 +32,7 @@ func NewEventHandlerMgr() *EventHandlerMgr {
 }
 
 func (this *EventHandlerMgr) AddHandlerInfo(handlerInfo *EventHandlerInfo) {
+	// NOTE:允许同一个组件注册多个对同一事件的响应
 	this.eventHandlers[handlerInfo.EventType] = append(this.eventHandlers[handlerInfo.EventType], handlerInfo)
 	if !slices.Contains(this.componentNames, handlerInfo.ComponentName) {
 		this.componentNames = append(this.componentNames, handlerInfo.ComponentName)

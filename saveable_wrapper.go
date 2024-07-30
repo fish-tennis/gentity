@@ -2,8 +2,21 @@ package gentity
 
 import (
 	"cmp"
+	"google.golang.org/protobuf/proto"
 	"slices"
 )
+
+// 保存数据是一个proto的辅助类
+type ProtoData[E proto.Message] struct {
+	BaseDirtyMark
+	Data E `db:""`
+}
+
+func NewProtoData[E proto.Message](e E) *ProtoData[E] {
+	return &ProtoData[E]{
+		Data: e,
+	}
+}
 
 // map类型的数据的辅助类
 type MapData[K comparable, V any] struct {
@@ -13,6 +26,16 @@ type MapData[K comparable, V any] struct {
 
 func (md *MapData[K, V]) Init() {
 	md.Data = make(map[K]V)
+}
+
+func (md *MapData[K, V]) Contains(k K) bool {
+	_, ok := md.Data[k]
+	return ok
+}
+
+func (md *MapData[K, V]) Get(k K) (V, bool) {
+	v, ok := md.Data[k]
+	return v, ok
 }
 
 // map[k] = v
@@ -25,6 +48,14 @@ func (md *MapData[K, V]) Set(k K, v V) {
 func (md *MapData[K, V]) Delete(k K) {
 	delete(md.Data, k)
 	md.SetDirty(k, false)
+}
+
+func (md *MapData[K, V]) Range(fn func(k K, v V) bool) {
+	for key, value := range md.Data {
+		if !fn(key, value) {
+			return
+		}
+	}
 }
 
 func NewMapData[K comparable, V any]() *MapData[K, V] {

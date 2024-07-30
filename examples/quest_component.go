@@ -14,8 +14,8 @@ const (
 
 // 利用go的init进行组件的自动注册
 func init() {
-	registerPlayerComponentCtor(ComponentNameQuest, 0, func(player *testPlayer, playerData *pb.PlayerData) gentity.Component {
-		component := &questComponent{
+	registerPlayerComponentCtor(ComponentNameQuest, 0, func(player *Player, playerData *pb.PlayerData) gentity.Component {
+		component := &Quest{
 			BaseComponent: *gentity.NewBaseComponent(player, ComponentNameQuest),
 			Finished:      new(gentity.SliceData[int32]),
 			Quests:        gentity.NewMapData[int32, *pb.QuestData](),
@@ -26,7 +26,7 @@ func init() {
 }
 
 // 任务组件
-type questComponent struct {
+type Quest struct {
 	gentity.BaseComponent
 	// 保存数据的子模块:已完成的任务
 	// 保存数据的子模块必须是导出字段(字段名大写开头)
@@ -35,11 +35,11 @@ type questComponent struct {
 	Quests *gentity.MapData[int32, *pb.QuestData] `child:""`
 }
 
-func (this *testPlayer) GetQuest() *questComponent {
-	return this.GetComponentByName(ComponentNameQuest).(*questComponent)
+func (this *Player) GetQuest() *Quest {
+	return this.GetComponentByName(ComponentNameQuest).(*Quest)
 }
 
-func (this *questComponent) AddFinishId(id int32) {
+func (this *Quest) AddFinishId(id int32) {
 	if slices.Contains(this.Finished.Data, id) {
 		return
 	}
@@ -48,11 +48,11 @@ func (this *questComponent) AddFinishId(id int32) {
 
 // 完成任务的消息回调
 // 这种格式写的函数可以自动注册客户端消息回调
-func (this *questComponent) OnFinishQuestReq(reqCmd gnet.PacketCommand, req *pb.FinishQuestReq) {
+func (this *Quest) OnFinishQuestReq(reqCmd gnet.PacketCommand, req *pb.FinishQuestReq) {
 	gentity.GetLogger().Debug("OnFinishQuestReq:%v", req)
 }
 
 // 组件上的事件响应接口
-func (this *questComponent) TriggerPlayerEntryGame(evt *PlayerEntryGame) {
-	gentity.GetLogger().Debug("questComponent.OnEventPlayerEntryGame:%v", evt)
+func (this *Quest) TriggerPlayerEntryGame(evt *PlayerEntryGame) {
+	gentity.GetLogger().Debug("Quest.OnEventPlayerEntryGame:%v", evt)
 }

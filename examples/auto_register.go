@@ -8,7 +8,7 @@ import (
 
 var (
 	// 组件构造接口注册
-	_playerComponentRegister = gentity.ComponentRegister[*testPlayer]{}
+	_playerComponentRegister = gentity.ComponentRegister[*Player]{}
 	// 消息回调接口注册
 	_playerPacketHandlerMgr = gentity.NewPacketHandlerMgr()
 	// 事件响应接口注册
@@ -16,8 +16,8 @@ var (
 )
 
 // 注册玩家组件构造信息
-func registerPlayerComponentCtor(componentName string, ctorOrder int, ctor func(player *testPlayer, playerData *pb.PlayerData) gentity.Component) {
-	_playerComponentRegister.Register(componentName, ctorOrder, func(entity *testPlayer, arg any) gentity.Component {
+func registerPlayerComponentCtor(componentName string, ctorOrder int, ctor func(player *Player, playerData *pb.PlayerData) gentity.Component) {
+	_playerComponentRegister.Register(componentName, ctorOrder, func(entity *Player, arg any) gentity.Component {
 		return ctor(entity, arg.(*pb.PlayerData))
 	})
 }

@@ -24,18 +24,21 @@ func LoadData(obj interface{}, sourceData interface{}) error {
 	if util.IsNil(sourceData) {
 		return nil
 	}
-	structCache := GetSaveableStruct(reflect.TypeOf(obj))
-	if structCache == nil {
+	objStruct := GetSaveableStruct(reflect.TypeOf(obj))
+	if objStruct == nil {
 		return ErrNotSaveableStruct
 	}
-	reflectVal := reflect.ValueOf(obj).Elem()
-	if structCache.IsSingleField() {
-		err := loadField(obj, sourceData, structCache.Field)
+	if objStruct.IsSingleField() {
+		err := loadField(obj, sourceData, objStruct.Field)
 		if err != nil {
-			GetLogger().Error("DeserializeFieldError:%v fieldName:%v", err.Error(), structCache.Field.Name)
+			GetLogger().Error("loadFieldError:%v fieldName:%v", err.Error(), objStruct.Field.Name)
 		}
 		return err
 	} else {
+		objVal := reflect.ValueOf(obj)
+		if objVal.Kind() == reflect.Ptr {
+			objVal = objVal.Elem()
+		}
 		sourceTyp := reflect.TypeOf(sourceData)
 		// 如果是proto,先转换成map
 		if sourceTyp.Kind() == reflect.Ptr {
@@ -53,21 +56,21 @@ func LoadData(obj interface{}, sourceData interface{}) error {
 			return ErrSourceDataType
 		}
 		sourceVal := reflect.ValueOf(sourceData)
-		for _, fieldCache := range structCache.Children {
-			sourceFieldVal := sourceVal.MapIndex(reflect.ValueOf(fieldCache.Name))
+		for _, childStruct := range objStruct.Children {
+			sourceFieldVal := sourceVal.MapIndex(reflect.ValueOf(childStruct.Name))
 			if !sourceFieldVal.IsValid() {
-				GetLogger().Debug("saveable not exists:%v", fieldCache.Name)
+				GetLogger().Debug("saveable not exists:%v", childStruct.Name)
 				continue
 			}
-			val := reflectVal.Field(fieldCache.FieldIndex)
-			if !fieldCache.InitNilField(val) {
-				GetLogger().Error("child nil %v", fieldCache.Name)
+			fieldVal := objVal.Field(childStruct.FieldIndex)
+			if !childStruct.InitNilField(fieldVal) {
+				GetLogger().Error("child nil %v", childStruct.Name)
 				continue
 			}
-			fieldInterface := val.Interface()
+			fieldInterface := fieldVal.Interface()
 			childLoadErr := LoadData(fieldInterface, sourceFieldVal.Interface())
 			if childLoadErr != nil {
-				GetLogger().Error("child load error field:%v", fieldCache.Name)
+				GetLogger().Error("child load error field:%v", childStruct.Name)
 				return childLoadErr
 			}
 		}
@@ -280,7 +283,7 @@ func loadFieldStruct(obj any, field reflect.Value, data any, fieldStruct *Saveab
 				return err
 			}
 			if _, ok := fieldInterface.(Saveable); ok {
-				GetLogger().Error("saveableField load err:%v,fieldName:%v dataType:%v", fieldStruct.Name, dataTyp.Kind())
+				GetLogger().Error("saveableField load err,fieldName:%v dataType:%v", fieldStruct.Name, dataTyp.Kind())
 			}
 		}
 	}
@@ -322,7 +325,10 @@ func loadFieldStruct(obj any, field reflect.Value, data any, fieldStruct *Saveab
 
 // 反序列化字段
 func loadField(obj any, sourceData any, fieldStruct *SaveableField) error {
-	objVal := reflect.ValueOf(obj).Elem()
+	objVal := reflect.ValueOf(obj)
+	if objVal.Kind() == reflect.Ptr {
+		objVal = objVal.Elem()
+	}
 	// 字段value
 	field := objVal.Field(fieldStruct.FieldIndex)
 	// 字段如果是nil,则尝试初始化
@@ -354,11 +360,15 @@ func loadField(obj any, sourceData any, fieldStruct *SaveableField) error {
 		return loadFieldBaseType(obj, field, sourceData, fieldStruct)
 
 	case reflect.Ptr: // reflect.Interface?
-		if _, ok := field.Interface().(proto.Message); ok {
+		fieldInterface := field.Interface()
+		if fieldInterface == nil {
+			return errors.New(fmt.Sprintf("ptr field cant convert to interface{},fieldName:%v", fieldStruct.Name))
+		}
+		if _, ok := fieldInterface.(proto.Message); ok {
 			return loadFieldProto(obj, field, sourceData, fieldStruct)
 		}
-		if _, ok := field.Interface().(Saveable); ok {
-			return LoadData(field.Interface(), sourceData)
+		if _, ok := fieldInterface.(Saveable); ok {
+			return LoadData(fieldInterface, sourceData)
 		}
 		return errors.New(fmt.Sprintf("ptr is not a proto.Message,fieldName:%v", fieldStruct.Name))
 
@@ -387,11 +397,14 @@ func getMapField(obj Saveable) (any, error) {
 	}
 	if structCache.IsSingleField() {
 		fieldStruct := structCache.Field
-		objVal := reflect.ValueOf(obj).Elem()
+		objVal := reflect.ValueOf(obj)
+		if objVal.Kind() == reflect.Ptr {
+			objVal = objVal.Elem()
+		}
 		// 字段value
 		field := objVal.Field(fieldStruct.FieldIndex)
 		switch fieldStruct.StructField.Type.Kind() {
-		case reflect.Map:
+		case reflect.Map: // 不支持 *map
 			return field.Interface(), nil
 
 		case reflect.Ptr:
@@ -416,7 +429,10 @@ func loadFieldFromCache(obj any, kvCache KvCache, cacheKey string, fieldStruct *
 	if err == redis.Nil || cacheType == "" || cacheType == "none" {
 		return false, nil
 	}
-	objVal := reflect.ValueOf(obj).Elem()
+	objVal := reflect.ValueOf(obj)
+	if objVal.Kind() == reflect.Ptr {
+		objVal = objVal.Elem()
+	}
 	field := objVal.Field(fieldStruct.FieldIndex)
 	// 字段如果是nil,则尝试初始化
 	if !fieldStruct.InitNilField(field) {
@@ -440,22 +456,21 @@ func loadFieldFromCache(obj any, kvCache KvCache, cacheKey string, fieldStruct *
 			sourceData = ConvertStringToRealType(fieldType, cacheData)
 
 		case reflect.Slice, reflect.Array:
-			// TODO: slice,array,SliceData在缓存中是json string
-			if !field.CanInterface() {
-				return true, errors.New(fmt.Sprintf("%v CanInterface false", fieldStruct.Name))
+			// json.Unmarshal的参数需要传入&field
+			if field.CanAddr() {
+				field = field.Addr()
 			}
-			jsonData, err := kvCache.Get(cacheKey)
-			if IsRedisError(err) {
-				GetLogger().Error("Get %v %v err:%v", cacheKey, cacheType, err)
-				return true, err
+			fieldInterface := field.Interface()
+			if fieldInterface == nil {
+				return true, errors.New(fmt.Sprintf("%v convertStructToInterfaceErr", fieldStruct.Name))
 			}
-			fieldInterface := field.Addr().Interface()
-			err = json.Unmarshal([]byte(jsonData), fieldInterface)
+			// 用json序列化
+			err = json.Unmarshal([]byte(cacheData), fieldInterface)
 			if err != nil {
-				GetLogger().Error("json.Unmarshal %v %v err:%v", cacheKey, field.Interface(), err)
+				GetLogger().Error("slice json.Unmarshal %v %v err:%v", cacheKey, field.Interface(), err)
 				return true, err
 			}
-			GetLogger().Debug("%v json.Unmarshal", cacheKey)
+			GetLogger().Debug("load slice %v field:%v", cacheKey, fieldStruct.Name)
 			return true, nil
 
 		default:
@@ -481,6 +496,7 @@ func loadFieldFromCache(obj any, kvCache KvCache, cacheKey string, fieldStruct *
 				GetLogger().Error("loadInterfaceMapErr %v %v err:%v", cacheKey, cacheType, err)
 				return true, err
 			}
+			GetLogger().Debug("load InterfaceMap %v field:%v", cacheKey, fieldStruct.Name)
 		} else {
 			var mapField any
 			switch fieldType.Kind() {
@@ -524,6 +540,7 @@ func loadFieldFromCache(obj any, kvCache KvCache, cacheKey string, fieldStruct *
 				GetLogger().Error("GetMap %v %v err:%v", cacheKey, cacheType, err)
 				return true, err
 			}
+			GetLogger().Debug("load map %v field:%v", cacheKey, fieldStruct.Name)
 		}
 		return true, nil
 
@@ -538,33 +555,45 @@ func loadFieldFromCache(obj any, kvCache KvCache, cacheKey string, fieldStruct *
 //	有缓存数据return true,否则return false
 //	解析缓存数据错误return error,否则return nil
 func LoadFromCache(obj interface{}, kvCache KvCache, cacheKey string) (bool, error) {
-	structCache := GetSaveableStruct(reflect.TypeOf(obj))
-	if structCache == nil {
-		return false, nil
+	objStruct := GetSaveableStruct(reflect.TypeOf(obj))
+	if objStruct == nil {
+		return false, ErrUnsupportedType
 	}
-	if structCache.IsSingleField() {
-		fieldStruct := structCache.Field
-		return loadFieldFromCache(obj, kvCache, cacheKey, fieldStruct)
+	if objStruct.IsSingleField() {
+		depth := 0
+		// 找到实际需要加载的字段(叶子节点)
+		fieldObj, fieldStruct := GetSingleSaveableField(obj, objStruct.Field, &depth)
+		if fieldObj == nil {
+			GetLogger().Error("LoadFromCache %v err depth:%v", cacheKey, depth)
+			return false, ErrUnsupportedType
+		}
+		GetLogger().Debug("GetSingleSaveableField %v depth:%v", cacheKey, depth)
+		return loadFieldFromCache(fieldObj, kvCache, cacheKey, fieldStruct)
 	} else {
-		objVal := reflect.ValueOf(obj).Elem()
-		for _, fieldCache := range structCache.Children {
-			val := objVal.Field(fieldCache.FieldIndex)
-			if !fieldCache.InitNilField(val) {
-				GetLogger().Error("nil %v", fieldCache.Name)
-				return true, errors.New(fmt.Sprintf("%v nil", fieldCache.Name))
+		hasData := false
+		objVal := reflect.ValueOf(obj)
+		if objVal.Kind() == reflect.Ptr {
+			objVal = objVal.Elem()
+		}
+		for _, childStruct := range objStruct.Children {
+			val := objVal.Field(childStruct.FieldIndex)
+			if !childStruct.InitNilField(val) {
+				GetLogger().Error("nil %v", childStruct.Name)
+				return true, errors.New(fmt.Sprintf("%v nil", childStruct.Name))
 			}
 			fieldInterface := val.Interface()
-			hasCache, err := LoadFromCache(fieldInterface, kvCache, cacheKey+"."+fieldCache.Name)
+			hasCache, err := LoadFromCache(fieldInterface, kvCache, cacheKey+"."+childStruct.Name)
 			if !hasCache {
 				continue
 			}
 			if err != nil {
-				GetLogger().Error("LoadFromCache %v error:%v", cacheKey, err.Error())
+				GetLogger().Error("LoadFromCache child %v error:%v", cacheKey, err.Error())
 				continue
 			}
+			hasData = true
 		}
+		return hasData, nil
 	}
-	return true, nil
 }
 
 // 根据缓存数据,修复数据

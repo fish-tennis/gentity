@@ -12,8 +12,8 @@ const (
 
 // 利用go的init进行组件的自动注册
 func init() {
-	registerPlayerComponentCtor(ComponentNameInterfaceMap, 100, func(player *testPlayer, playerData *pb.PlayerData) gentity.Component {
-		component := &interfaceMapComponent{
+	registerPlayerComponentCtor(ComponentNameInterfaceMap, 100, func(player *Player, playerData *pb.PlayerData) gentity.Component {
+		component := &InterfaceMap{
 			MapComponent: *gentity.NewMapComponent(player, ComponentNameInterfaceMap),
 			InterfaceMap: make(map[string]interface{}),
 		}
@@ -25,18 +25,18 @@ func init() {
 }
 
 // 动态数据组件
-type interfaceMapComponent struct {
+type InterfaceMap struct {
 	gentity.MapComponent
 	// 动态的数据结构
 	InterfaceMap map[string]interface{} `db:"InterfaceMap"`
 }
 
-func (this *testPlayer) GetInterfaceMap() *interfaceMapComponent {
-	return this.GetComponentByName(ComponentNameInterfaceMap).(*interfaceMapComponent)
+func (this *Player) GetInterfaceMap() *InterfaceMap {
+	return this.GetComponentByName(ComponentNameInterfaceMap).(*InterfaceMap)
 }
 
 // 反序列化
-func (im *interfaceMapComponent) LoadFromBytesMap(bytesMap any) error {
+func (im *InterfaceMap) LoadFromBytesMap(bytesMap any) error {
 	registerValueCtor := map[string]func() interface{}{
 		"item1": func() interface{} {
 			return &item1{
@@ -74,7 +74,7 @@ func (im *interfaceMapComponent) LoadFromBytesMap(bytesMap any) error {
 	return nil
 }
 
-func (im *interfaceMapComponent) makeTestData() {
+func (im *InterfaceMap) makeTestData() {
 	gentity.GetLogger().Info("makeTestData")
 	i1 := &item1{
 		Data: &pb.BaseInfo{
