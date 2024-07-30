@@ -40,15 +40,15 @@ func LoadData(obj interface{}, sourceData interface{}) error {
 			objVal = objVal.Elem()
 		}
 		sourceTyp := reflect.TypeOf(sourceData)
-		// 如果是proto,先转换成map
-		if sourceTyp.Kind() == reflect.Ptr {
-			//protoMessage, ok := sourceData.(proto.Message)
-			//if !ok {
-			//	GetLogger().Error("unsupported type:%v", sourceTyp.Kind())
-			//	return errors.New(fmt.Sprintf("unsupported type:%v", sourceTyp.Kind()))
-			//}
+		// 如果是结构,先转换成map
+		if sourceTyp.Kind() == reflect.Ptr || sourceTyp.Kind() == reflect.Struct {
 			// mongodb中读出来是proto.Message格式,转换成map[string]interface{}
-			sourceData = ConvertProtoToMap(sourceData)
+			protoMessage, ok := sourceData.(proto.Message)
+			if ok {
+				sourceData = ConvertProtoToMap(protoMessage)
+			} else {
+				sourceData = ConvertObjectToMap(sourceData, false)
+			}
 			sourceTyp = reflect.TypeOf(sourceData)
 		}
 		if sourceTyp.Kind() != reflect.Map {

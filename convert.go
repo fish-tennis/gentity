@@ -126,13 +126,22 @@ func ConvertInterfaceToRealType(typ reflect.Type, v interface{}) interface{} {
 }
 
 // proto.Message -> map[string]interface{}
-func ConvertProtoToMap(obj any) map[string]interface{} {
+func ConvertProtoToMap(protoMessage proto.Message) map[string]interface{} {
+	return ConvertObjectToMap(protoMessage, true)
+}
+
+// object -> map[string]interface{}
+func ConvertObjectToMap(obj any, ignoreEmptyTag bool) map[string]interface{} {
 	stringMap := make(map[string]interface{})
-	typ := reflect.TypeOf(obj).Elem()
-	val := reflect.ValueOf(obj).Elem()
+	typ := reflect.TypeOf(obj)
+	val := reflect.ValueOf(obj)
+	if typ.Kind() == reflect.Pointer {
+		typ = typ.Elem()
+		val = val.Elem()
+	}
 	for i := 0; i < typ.NumField(); i++ {
 		sf := typ.Field(i)
-		if len(sf.Tag) == 0 {
+		if ignoreEmptyTag && len(sf.Tag) == 0 {
 			continue
 		}
 		var v interface{}

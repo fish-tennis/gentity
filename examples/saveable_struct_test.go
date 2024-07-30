@@ -519,7 +519,7 @@ func TestChildFields(t *testing.T) {
 	}
 	_entityComponentRegister.InitComponents(loadEntity, nil)
 	t.Logf("load data from db")
-	entity.RangeComponent(func(component gentity.Component) bool {
+	loadEntity.RangeComponent(func(component gentity.Component) bool {
 		dataVal := reflect.ValueOf(entityData).Elem().FieldByName(component.GetName())
 		if util.IsValueNil(dataVal) {
 			return true
@@ -532,5 +532,13 @@ func TestChildFields(t *testing.T) {
 		t.Logf("%v:%v", component.GetName(), component)
 		return true
 	})
+	childFields = loadEntity.GetComponentByName("ChildFields").(*ChildFields)
+	t.Logf("ProtoField:%v", childFields.ProtoField.Data)
+	t.Logf("ProtoFieldPtr:%v", childFields.ProtoFieldPtr.Data)
+	t.Logf("MapField:%v", childFields.MapField.Data)
+	t.Logf("MapFieldPtr:%v", childFields.MapFieldPtr.Data)
+	t.Logf("MapStructField:%v", childFields.MapStructField.Data)
+	t.Logf("MapPtrField:%v", childFields.MapPtrField.Data)
+	t.Logf("MapFieldPtrField:%v", childFields.MapFieldPtrField.FieldPtr.Data)
 
 }
