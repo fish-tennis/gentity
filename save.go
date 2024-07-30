@@ -80,17 +80,15 @@ func GetSingleSaveableField(obj any, field *SaveableField, depth *int) (any, *Sa
 	return GetSingleSaveableField(fieldInterface, fieldStruct.Field, depth)
 }
 
-// 把组件的修改数据保存到缓存
-func SaveComponentChangedDataToCache(kvCache KvCache, cacheKeyPrefix string, entityKey interface{}, component Component) {
-	objStruct := GetSaveableStruct(reflect.TypeOf(component))
+func SaveObjectChangedDataToCache(kvCache KvCache, parentCacheKey string, obj any) {
+	objStruct := GetSaveableStruct(reflect.TypeOf(obj))
 	if objStruct == nil {
 		return
 	}
 	if objStruct.IsSingleField() {
-		// NOTE: 这里用的组件名,并没有用objStruct.Field.Name
-		cacheKey := GetEntityComponentCacheKey(cacheKeyPrefix, entityKey, component.GetName())
+		cacheKey := parentCacheKey
 		depth := 0
-		fieldObj, _ := GetSingleSaveableField(component, objStruct.Field, &depth)
+		fieldObj, _ := GetSingleSaveableField(obj, objStruct.Field, &depth)
 		if fieldObj == nil {
 			GetLogger().Error("cache %v err depth:%v", cacheKey, depth)
 			return
@@ -98,13 +96,13 @@ func SaveComponentChangedDataToCache(kvCache KvCache, cacheKeyPrefix string, ent
 		GetLogger().Debug("GetSingleSaveableField %v fieldName:%v depth:%v", cacheKey, objStruct.Field.Name, depth)
 		SaveChangedDataToCache(kvCache, fieldObj, cacheKey)
 	} else {
-		objVal := reflect.ValueOf(component)
+		objVal := reflect.ValueOf(obj)
 		if objVal.Kind() == reflect.Ptr {
 			objVal = objVal.Elem()
 		}
 		for _, childStruct := range objStruct.Children {
-			// 子对象才用到childStruct.Name
-			cacheKey := GetEntityComponentChildCacheKey(cacheKeyPrefix, entityKey, component.GetName(), childStruct.Name)
+			// 子对象用childStruct.Name拼接
+			cacheKey := fmt.Sprintf("%v.%v", parentCacheKey, childStruct.Name)
 			fieldVal := objVal.Field(childStruct.FieldIndex)
 			if util.IsValueNil(fieldVal) {
 				_, err := kvCache.Del(cacheKey)
@@ -123,9 +121,16 @@ func SaveComponentChangedDataToCache(kvCache KvCache, cacheKeyPrefix string, ent
 				GetLogger().Error("cache child err cacheKey:%v", cacheKey)
 				continue
 			}
-			SaveChangedDataToCache(kvCache, fieldInterface, cacheKey)
+			SaveObjectChangedDataToCache(kvCache, cacheKey, fieldInterface)
 		}
 	}
+}
+
+// 把组件的修改数据保存到缓存
+func SaveComponentChangedDataToCache(kvCache KvCache, cacheKeyPrefix string, entityKey interface{}, component Component) {
+	// NOTE: 第一层字段用的组件名,并没有用objStruct.Field.Name
+	cacheKey := GetEntityComponentCacheKey(cacheKeyPrefix, entityKey, component.GetName())
+	SaveObjectChangedDataToCache(kvCache, cacheKey, component)
 }
 
 func saveDirtyMark(kvCache KvCache, obj interface{}, cacheKeyName string, fieldCache *SaveableField) {
@@ -323,110 +328,201 @@ func SaveEntityChangedDataToDb(entityDb EntityDb, entity Entity, kvCache KvCache
 	return SaveEntityChangedDataToDbByKey(entityDb, entity, entity.GetId(), kvCache, removeCacheAfterSaveDb, cachePrefix)
 }
 
+type saveDataRecord struct {
+	changedData map[string]any
+	saved       []Saveable
+	delKeys     []string
+}
+
+func saveObjectChangedDataToDbByKey(entityDb EntityDb, obj any, entityKey interface{}, kvCache KvCache,
+	removeCacheAfterSaveDb bool, objName string, parentCacheKey string, record *saveDataRecord) {
+	objStruct := GetSaveableStruct(reflect.TypeOf(obj))
+	if objStruct == nil {
+		return
+	}
+	if objStruct.IsSingleField() {
+		depth := 0
+		// 找到实际需要保存的字段(叶子节点)
+		fieldObj, _ := GetSingleSaveableField(obj, objStruct.Field, &depth)
+		if fieldObj == nil {
+			GetLogger().Error("%v %v.%v not find saveable field,depth:%v", entityKey, objName, objStruct.Field.Name, depth)
+			return
+		}
+		GetLogger().Debug("GetSingleSaveableField %v %v.%v depth:%v", entityKey, objName, objStruct.Field.Name, depth)
+		if saveable, ok := fieldObj.(Saveable); ok {
+			// 如果某个组件数据没改变过,就无需保存
+			if !saveable.IsChanged() {
+				GetLogger().Debug("%v ignore %v", entityKey, objName)
+				return
+			}
+			saveData, err := GetSaveData(fieldObj, objName)
+			if err != nil {
+				GetLogger().Error("%v Save %v err:%v", entityKey, objName, err.Error())
+				return
+			}
+			// 使用protobuf存mongodb时,mongodb默认会把字段名转成小写,因为protobuf没设置bson tag
+			record.changedData[objName] = saveData
+			if removeCacheAfterSaveDb {
+				record.delKeys = append(record.delKeys, fmt.Sprintf("%v.%v", parentCacheKey, objName))
+			}
+			record.saved = append(record.saved, saveable)
+			GetLogger().Debug("SaveDb %v %v", entityKey, objName)
+		}
+	} else {
+		objVal := reflect.ValueOf(obj).Elem()
+		for _, childStruct := range objStruct.Children {
+			childName := ""
+			if _saveableStructsMap.useLowerName {
+				childName = objName + "." + strings.ToLower(childStruct.Name)
+			} else {
+				childName = objName + "." + childStruct.Name
+			}
+			fieldVal := objVal.Field(childStruct.FieldIndex)
+			if util.IsValueNil(fieldVal) {
+				record.changedData[childName] = nil
+				continue
+			}
+			var fieldInterface any
+			if fieldVal.Kind() == reflect.Struct {
+				fieldInterface = convertStructToInterface(fieldVal)
+			} else {
+				fieldInterface = fieldVal.Interface()
+			}
+			if fieldInterface == nil {
+				GetLogger().Error("save %v %v err", entityKey, childName)
+				continue
+			}
+			childCacheName := ""
+			if _saveableStructsMap.useLowerName {
+				childCacheName = parentCacheKey + "." + strings.ToLower(childStruct.Name)
+			} else {
+				childCacheName = parentCacheKey + "." + childStruct.Name
+			}
+			saveObjectChangedDataToDbByKey(entityDb, fieldInterface, entityKey, kvCache, removeCacheAfterSaveDb, childName, childCacheName, record)
+		}
+	}
+}
+
 // Entity的变化数据保存到数据库
 //
 //	指定key
 func SaveEntityChangedDataToDbByKey(entityDb EntityDb, entity Entity, entityKey interface{}, kvCache KvCache, removeCacheAfterSaveDb bool, cachePrefix string) error {
-	changedDatas := make(map[string]interface{})
-	var saved []Saveable
-	var delKeys []string
+	record := &saveDataRecord{
+		changedData: make(map[string]any),
+	}
 	entity.RangeComponent(func(component Component) bool {
-		objStruct := GetSaveableStruct(reflect.TypeOf(component))
-		if objStruct == nil {
-			return true
-		}
-		if objStruct.IsSingleField() {
-			depth := 0
-			// 找到实际需要保存的字段(叶子节点)
-			fieldObj, _ := GetSingleSaveableField(component, objStruct.Field, &depth)
-			if fieldObj == nil {
-				GetLogger().Error("%v %v.%v not find saveable field,depth:%v", entityKey, component.GetName(), objStruct.Field.Name, depth)
-				return true
-			}
-			GetLogger().Debug("GetSingleSaveableField %v %v.%v depth:%v", entityKey, component.GetName(), objStruct.Field.Name, depth)
-			if saveable, ok := fieldObj.(Saveable); ok {
-				// 如果某个组件数据没改变过,就无需保存
-				if !saveable.IsChanged() {
-					GetLogger().Debug("%v ignore %v", entityKey, component.GetName())
-					return true
-				}
-				saveData, err := GetSaveData(fieldObj, GetComponentSaveName(component))
-				if err != nil {
-					GetLogger().Error("%v Save %v err:%v", entityKey, component.GetName(), err.Error())
-					return true
-				}
-				// 使用protobuf存mongodb时,mongodb默认会把字段名转成小写,因为protobuf没设置bson tag
-				// TODO: use objStruct.Field.Name?
-				changedDatas[GetComponentSaveName(component)] = saveData
-				if removeCacheAfterSaveDb {
-					delKeys = append(delKeys, GetEntityComponentCacheKey(cachePrefix, entityKey, component.GetName()))
-				}
-				saved = append(saved, saveable)
-				GetLogger().Debug("SaveDb %v %v", entityKey, component.GetName())
-			}
-		} else {
-			objVal := reflect.ValueOf(component).Elem()
-			for _, childStruct := range objStruct.Children {
-				childName := GetComponentSaveName(component) + "." + childStruct.Name
-				fieldVal := objVal.Field(childStruct.FieldIndex)
-				if util.IsValueNil(fieldVal) {
-					changedDatas[childName] = nil
-					continue
-				}
-				var fieldInterface any
-				if fieldVal.Kind() == reflect.Struct {
-					fieldInterface = convertStructToInterface(fieldVal)
-				} else {
-					fieldInterface = fieldVal.Interface()
-				}
-				if fieldInterface == nil {
-					GetLogger().Error("save %v %v err", entityKey, childName)
-					continue
-				}
-				if saveable, ok := fieldInterface.(Saveable); ok {
-					// 如果某个组件数据没改变过,就无需保存
-					if !saveable.IsChanged() {
-						GetLogger().Debug("%v ignore %v.%v", entityKey, component.GetName(), childName)
-						continue
-					}
-					childSaveData, err := GetSaveData(fieldInterface, childName)
-					if err != nil {
-						GetLogger().Error("%v Save %v.%v err:%v", entityKey, component.GetName(), childName, err.Error())
-						continue
-					}
-					changedDatas[childName] = childSaveData
-					if removeCacheAfterSaveDb {
-						delKeys = append(delKeys, GetEntityComponentChildCacheKey(cachePrefix, entityKey, component.GetName(), childStruct.Name))
-					}
-					saved = append(saved, saveable)
-					GetLogger().Debug("SaveDb %v %v.%v", entityKey, component.GetName(), childName)
-				}
-			}
-		}
+		saveObjectChangedDataToDbByKey(entityDb, component, entityKey, kvCache, removeCacheAfterSaveDb,
+			component.GetName(), GetEntityCacheKey(cachePrefix, entityKey), record)
+		//objStruct := GetSaveableStruct(reflect.TypeOf(component))
+		//if objStruct == nil {
+		//	return true
+		//}
+		//if objStruct.IsSingleField() {
+		//	depth := 0
+		//	// 找到实际需要保存的字段(叶子节点)
+		//	fieldObj, _ := GetSingleSaveableField(component, objStruct.Field, &depth)
+		//	if fieldObj == nil {
+		//		GetLogger().Error("%v %v.%v not find saveable field,depth:%v", entityKey, component.GetName(), objStruct.Field.Name, depth)
+		//		return true
+		//	}
+		//	GetLogger().Debug("GetSingleSaveableField %v %v.%v depth:%v", entityKey, component.GetName(), objStruct.Field.Name, depth)
+		//	if saveable, ok := fieldObj.(Saveable); ok {
+		//		// 如果某个组件数据没改变过,就无需保存
+		//		if !saveable.IsChanged() {
+		//			GetLogger().Debug("%v ignore %v", entityKey, component.GetName())
+		//			return true
+		//		}
+		//		saveData, err := GetSaveData(fieldObj, GetComponentSaveName(component))
+		//		if err != nil {
+		//			GetLogger().Error("%v Save %v err:%v", entityKey, component.GetName(), err.Error())
+		//			return true
+		//		}
+		//		// 使用protobuf存mongodb时,mongodb默认会把字段名转成小写,因为protobuf没设置bson tag
+		//		// TODO: use objStruct.Field.Name?
+		//		changedDatas[GetComponentSaveName(component)] = saveData
+		//		if removeCacheAfterSaveDb {
+		//			delKeys = append(delKeys, GetEntityComponentCacheKey(cachePrefix, entityKey, component.GetName()))
+		//		}
+		//		saved = append(saved, saveable)
+		//		GetLogger().Debug("SaveDb %v %v", entityKey, component.GetName())
+		//	}
+		//} else {
+		//	objVal := reflect.ValueOf(component).Elem()
+		//	for _, childStruct := range objStruct.Children {
+		//		childName := GetComponentSaveName(component) + "." + childStruct.Name
+		//		fieldVal := objVal.Field(childStruct.FieldIndex)
+		//		if util.IsValueNil(fieldVal) {
+		//			changedDatas[childName] = nil
+		//			continue
+		//		}
+		//		var fieldInterface any
+		//		if fieldVal.Kind() == reflect.Struct {
+		//			fieldInterface = convertStructToInterface(fieldVal)
+		//		} else {
+		//			fieldInterface = fieldVal.Interface()
+		//		}
+		//		if fieldInterface == nil {
+		//			GetLogger().Error("save %v %v.%v err", entityKey, component.GetName(), childName)
+		//			continue
+		//		}
+		//		fieldStruct := GetSaveableStruct(reflect.TypeOf(fieldInterface))
+		//		if fieldStruct != nil {
+		//			depth := 0
+		//			// 找到实际需要保存的字段(叶子节点)
+		//			fieldInterface, _ = GetSingleSaveableField(fieldInterface, fieldStruct.Field, &depth)
+		//			if fieldInterface == nil {
+		//				GetLogger().Error("%v %v.%v not find saveable field,depth:%v", entityKey, component.GetName(), fieldStruct.Field.Name, depth)
+		//				continue
+		//			}
+		//			GetLogger().Debug("GetSingleSaveableField %v %v.%v depth:%v", entityKey, component.GetName(), fieldStruct.Field.Name, depth)
+		//		}
+		//		if saveable, ok := fieldInterface.(Saveable); ok {
+		//			// 如果某个组件数据没改变过,就无需保存
+		//			if !saveable.IsChanged() {
+		//				GetLogger().Debug("%v ignore %v.%v", entityKey, component.GetName(), childName)
+		//				continue
+		//			}
+		//			childSaveData, err := GetSaveData(fieldInterface, childName)
+		//			if err != nil {
+		//				GetLogger().Error("%v Save %v.%v err:%v", entityKey, component.GetName(), childName, err.Error())
+		//				continue
+		//			}
+		//			changedDatas[childName] = childSaveData
+		//			if removeCacheAfterSaveDb {
+		//				delKeys = append(delKeys, GetEntityComponentChildCacheKey(cachePrefix, entityKey, component.GetName(), childStruct.Name))
+		//			}
+		//			saved = append(saved, saveable)
+		//			GetLogger().Debug("SaveDb %v %v.%v", entityKey, component.GetName(), childName)
+		//		} else {
+		//			GetLogger().Error("%v not Saveable %v.%v", entityKey, component.GetName(), childName)
+		//			continue
+		//		}
+		//	}
+		//}
 		return true
 	})
-	if len(changedDatas) == 0 {
+	if len(record.changedData) == 0 {
 		GetLogger().Debug("ignore unchanged data %v", entityKey)
 		return nil
 	}
 	// NOTE: 明文保存的proto字段,字段名会被mongodb自动转为小写 Q:有办法解决吗?
 	// 如examples里的baseInfoComponent的pb.BaseInfo的LongFieldNameTest字段在mongodb中会被转成longfieldnametest
-	saveDbErr := entityDb.SaveComponents(entityKey, changedDatas)
+	saveDbErr := entityDb.SaveComponents(entityKey, record.changedData)
 	if saveDbErr != nil {
 		GetLogger().Error("SaveDb %v err:%v", entityKey, saveDbErr)
-		GetLogger().Error("%v", changedDatas)
+		GetLogger().Error("%v", record.changedData)
 	} else {
 		GetLogger().Debug("SaveDb %v", entityKey)
 	}
 	if saveDbErr == nil {
 		// 保存数据库成功后,重置修改标记
-		for _, saveable := range saved {
+		for _, saveable := range record.saved {
 			saveable.ResetChanged()
 		}
-		if len(delKeys) > 0 {
+		if len(record.delKeys) > 0 {
 			// 保存数据库成功后,才删除缓存
-			kvCache.Del(delKeys...)
-			GetLogger().Debug("RemoveCache %v %v", entityKey, delKeys)
+			kvCache.Del(record.delKeys...)
+			GetLogger().Debug("RemoveCache %v %v", entityKey, record.delKeys)
 		}
 	}
 	return saveDbErr

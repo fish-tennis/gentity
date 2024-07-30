@@ -42,13 +42,13 @@ func LoadData(obj interface{}, sourceData interface{}) error {
 		sourceTyp := reflect.TypeOf(sourceData)
 		// 如果是proto,先转换成map
 		if sourceTyp.Kind() == reflect.Ptr {
-			protoMessage, ok := sourceData.(proto.Message)
-			if !ok {
-				GetLogger().Error("unsupported type:%v", sourceTyp.Kind())
-				return errors.New(fmt.Sprintf("unsupported type:%v", sourceTyp.Kind()))
-			}
+			//protoMessage, ok := sourceData.(proto.Message)
+			//if !ok {
+			//	GetLogger().Error("unsupported type:%v", sourceTyp.Kind())
+			//	return errors.New(fmt.Sprintf("unsupported type:%v", sourceTyp.Kind()))
+			//}
 			// mongodb中读出来是proto.Message格式,转换成map[string]interface{}
-			sourceData = ConvertProtoToMap(protoMessage)
+			sourceData = ConvertProtoToMap(sourceData)
 			sourceTyp = reflect.TypeOf(sourceData)
 		}
 		if sourceTyp.Kind() != reflect.Map {
@@ -600,11 +600,11 @@ func LoadFromCache(obj interface{}, kvCache KvCache, cacheKey string) (bool, err
 // 如:服务器crash时,缓存数据没来得及保存到数据库,服务器重启后读取缓存中的数据,保存到数据库,防止数据回档
 func FixEntityDataFromCache(entity Entity, db EntityDb, kvCache KvCache, cacheKeyPrefix string, entityKey interface{}) {
 	entity.RangeComponent(func(component Component) bool {
-		structCache := GetSaveableStruct(reflect.TypeOf(component))
-		if structCache == nil {
+		objStruct := GetSaveableStruct(reflect.TypeOf(component))
+		if objStruct == nil {
 			return true
 		}
-		if structCache.IsSingleField() {
+		if objStruct.IsSingleField() {
 			cacheKey := GetEntityComponentCacheKey(cacheKeyPrefix, entityKey, component.GetName())
 			hasCache, err := LoadFromCache(component, kvCache, cacheKey)
 			if !hasCache {
@@ -628,15 +628,18 @@ func FixEntityDataFromCache(entity Entity, db EntityDb, kvCache KvCache, cacheKe
 			kvCache.Del(cacheKey)
 			GetLogger().Info("RemoveCache %v", cacheKey)
 		} else {
-			reflectVal := reflect.ValueOf(component).Elem()
-			for _, fieldCache := range structCache.Children {
-				val := reflectVal.Field(fieldCache.FieldIndex)
-				if !fieldCache.InitNilField(val) {
-					GetLogger().Error("%v nil", fieldCache.Name)
+			objVal := reflect.ValueOf(component)
+			if objVal.Kind() == reflect.Ptr {
+				objVal = objVal.Elem()
+			}
+			for _, childStruct := range objStruct.Children {
+				fieldVal := objVal.Field(childStruct.FieldIndex)
+				if !childStruct.InitNilField(fieldVal) {
+					GetLogger().Error("%v %v.%v nil", entity, component.GetName(), childStruct.Name)
 					return true
 				}
-				fieldInterface := val.Interface()
-				cacheKey := GetEntityComponentChildCacheKey(cacheKeyPrefix, entityKey, component.GetName(), fieldCache.Name)
+				fieldInterface := fieldVal.Interface()
+				cacheKey := GetEntityComponentChildCacheKey(cacheKeyPrefix, entityKey, component.GetName(), childStruct.Name)
 				hasCache, err := LoadFromCache(fieldInterface, kvCache, cacheKey)
 				if !hasCache {
 					return true
@@ -645,21 +648,21 @@ func FixEntityDataFromCache(entity Entity, db EntityDb, kvCache KvCache, cacheKe
 					GetLogger().Error("LoadFromCache %v error:%v", cacheKey, err.Error())
 					return true
 				}
-				GetLogger().Debug("%v", fieldInterface)
+				//GetLogger().Debug("%v", fieldInterface)
 				saveData, err := GetSaveData(fieldInterface, GetComponentSaveName(component))
 				if err != nil {
-					GetLogger().Error("%v Save %v.%v err %v", entityKey, component.GetName(), fieldCache.Name, err.Error())
+					GetLogger().Error("%v Save %v.%v err %v", entityKey, component.GetName(), childStruct.Name, err.Error())
 					return true
 				}
-				GetLogger().Debug("%v", saveData)
-				saveDbErr := db.SaveComponentField(entityKey, GetComponentSaveName(component), fieldCache.Name, saveData)
+				//GetLogger().Debug("%v", saveData)
+				saveDbErr := db.SaveComponentField(entityKey, GetComponentSaveName(component), childStruct.Name, saveData)
 				if saveDbErr != nil {
-					GetLogger().Error("%v SaveDb %v.%v err %v", entityKey, GetComponentSaveName(component), fieldCache.Name, saveDbErr.Error())
+					GetLogger().Error("%v SaveDb %v.%v err %v", entityKey, GetComponentSaveName(component), childStruct.Name, saveDbErr.Error())
 					return true
 				}
-				GetLogger().Info("%v -> %v.%v", cacheKey, GetComponentSaveName(component), fieldCache.Name)
+				GetLogger().Info("%v -> %v.%v", cacheKey, GetComponentSaveName(component), childStruct.Name)
 				kvCache.Del(cacheKey)
-				GetLogger().Info("RemoveCache %v", cacheKey)
+				GetLogger().Info("RemoveCacheAfterFix %v", cacheKey)
 			}
 		}
 		return true
