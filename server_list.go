@@ -28,6 +28,7 @@ type ServerList interface {
 	// 服务注册:上传本地服务器的信息
 	RegisterLocalServerInfo()
 
+	// TODO:移除gnet依赖
 	// 发送proto packet
 	Send(serverId int32, cmd gnet.PacketCommand, message proto.Message, opts ...gnet.SendOption) bool
 

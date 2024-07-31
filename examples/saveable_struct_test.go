@@ -519,19 +519,10 @@ func TestChildFields(t *testing.T) {
 	}
 	_entityComponentRegister.InitComponents(loadEntity, nil)
 	t.Logf("load data from db")
-	loadEntity.RangeComponent(func(component gentity.Component) bool {
-		dataVal := reflect.ValueOf(entityData).Elem().FieldByName(component.GetName())
-		if util.IsValueNil(dataVal) {
-			return true
-		}
-		loadErr := gentity.LoadData(component, dataVal.Interface())
-		if loadErr != nil {
-			t.Logf("%v loadErr:%v", component.GetName(), loadErr.Error())
-			return true
-		}
-		t.Logf("%v:%v", component.GetName(), component)
-		return true
-	})
+	err = gentity.LoadEntityData(loadEntity, entityData)
+	if err != nil {
+		t.Fatalf("LoadEntityData error:%v", err.Error())
+	}
 	childFields = loadEntity.GetComponentByName("ChildFields").(*ChildFields)
 	t.Logf("ProtoField:%v", childFields.ProtoField.Data)
 	t.Logf("ProtoFieldPtr:%v", childFields.ProtoFieldPtr.Data)

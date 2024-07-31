@@ -13,7 +13,7 @@ const (
 
 // 利用go的init进行组件的自动注册
 func init() {
-	registerPlayerComponentCtor(ComponentNameBag, 0, func(player *Player, playerData *pb.PlayerData) gentity.Component {
+	_playerComponentRegister.Register(ComponentNameBag, 0, func(player *Player, _ any) gentity.Component {
 		component := &Bag{
 			BaseComponent:  *gentity.NewBaseComponent(player, ComponentNameBag),
 			BagCountItem:   new(BagCountItem),
@@ -22,7 +22,6 @@ func init() {
 		}
 		component.BagCountItem.Init()
 		component.BagUniqueItem.Init()
-		gentity.LoadData(component, playerData.GetBag())
 		return component
 	})
 }

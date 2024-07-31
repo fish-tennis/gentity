@@ -14,14 +14,12 @@ const (
 
 // 利用go的init进行组件的自动注册
 func init() {
-	registerPlayerComponentCtor(ComponentNameQuest, 0, func(player *Player, playerData *pb.PlayerData) gentity.Component {
-		component := &Quest{
+	_playerComponentRegister.Register(ComponentNameQuest, 0, func(player *Player, _ any) gentity.Component {
+		return &Quest{
 			BaseComponent: *gentity.NewBaseComponent(player, ComponentNameQuest),
 			Finished:      new(gentity.SliceData[int32]),
 			Quests:        gentity.NewMapData[int32, *pb.QuestData](),
 		}
-		gentity.LoadData(component, playerData.GetQuest())
-		return component
 	})
 }
 

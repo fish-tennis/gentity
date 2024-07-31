@@ -7,7 +7,6 @@ import (
 	"github.com/fish-tennis/gentity/examples/pb"
 	"github.com/fish-tennis/gnet"
 	"github.com/go-redis/redis/v8"
-	"go.mongodb.org/mongo-driver/bson"
 	"google.golang.org/protobuf/proto"
 	"testing"
 	"time"
@@ -58,7 +57,7 @@ func TestFindPlayerId(t *testing.T) {
 		mongoDb.Disconnect()
 	}()
 
-	deletePlayer(mongoDb, 1)
+	playerDb.DeleteEntity(1)
 	player1 := newTestPlayer(103, 1)
 	playerDb.InsertEntity(player1.Id, getNewPlayerSaveData(player1))
 
@@ -78,7 +77,7 @@ func TestFindPlayerId(t *testing.T) {
 
 	// 新建3个角色数据
 	for i := 0; i < 3; i++ {
-		deletePlayer(mongoDb, int64(100+i))
+		playerDb.DeleteEntity(int64(100 + i))
 		playeri := newTestPlayer(int64(100+i), 100)
 		playerDb.InsertEntity(playeri.Id, getNewPlayerSaveData(playeri))
 	}
@@ -88,10 +87,6 @@ func TestFindPlayerId(t *testing.T) {
 		t.Log(err)
 	}
 	t.Logf("findPlayerIds:%v", findPlayerIds)
-}
-
-func deletePlayer(mongoDb *gentity.MongoDb, id int64) {
-	mongoDb.GetMongoDatabase().Collection(_collectionName).FindOneAndDelete(context.Background(), bson.D{{"_id", id}})
 }
 
 // 测试缓存接口
@@ -107,7 +102,7 @@ func TestDbCache(t *testing.T) {
 	}()
 	kvCache := initRedis()
 
-	deletePlayer(mongoDb, 1)
+	playerDb.DeleteEntity(1)
 	player1 := newTestPlayer(1, 1)
 	playerDb.InsertEntity(player1.Id, getNewPlayerSaveData(player1))
 
@@ -132,6 +127,9 @@ func TestDbCache(t *testing.T) {
 	player1.SaveCache(kvCache)
 
 	interfaceMap := player1.GetInterfaceMap()
+	if len(interfaceMap.InterfaceMap) == 0 {
+		interfaceMap.makeTestData()
+	}
 	interfaceMap.InterfaceMap["item1"].(*item1).addExp(10)
 	interfaceMap.SetDirty("item1", true)
 	player1.SaveCache(kvCache)
@@ -206,7 +204,7 @@ func TestFixDataFromCache(t *testing.T) {
 	}()
 	kvCache := initRedis()
 
-	deletePlayer(mongoDb, 1)
+	playerDb.DeleteEntity(1)
 	player1 := newTestPlayer(1, 1)
 	playerDb.InsertEntity(player1.Id, getNewPlayerSaveData(player1))
 
@@ -225,6 +223,9 @@ func TestFixDataFromCache(t *testing.T) {
 	player1.SaveCache(kvCache)
 
 	interfaceMap := player1.GetInterfaceMap()
+	if len(interfaceMap.InterfaceMap) == 0 {
+		interfaceMap.makeTestData()
+	}
 	interfaceMap.InterfaceMap["item1"].(*item1).addExp(10)
 	interfaceMap.SetDirty("item1", true)
 	player1.SaveCache(kvCache)
@@ -268,6 +269,9 @@ func TestFixDataFromCache(t *testing.T) {
 	t.Logf("Quest.Finished:%v", loadPlayer.GetQuest().Finished.Data)
 	t.Logf("Quest.Quests:%v", loadPlayer.GetQuest().Quests.Data)
 	t.Logf("InterfaceMap:%v", loadPlayer.GetInterfaceMap().InterfaceMap)
+	for k, v := range loadPlayer.GetInterfaceMap().InterfaceMap {
+		t.Logf("%v:%v", k, v)
+	}
 	t.Logf("Array:%v", loadPlayer.GetArray().Array)
 	t.Logf("Slice:%v", loadPlayer.GetSlice().Data)
 	s := loadPlayer.GetStruct()

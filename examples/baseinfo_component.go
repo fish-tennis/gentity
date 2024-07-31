@@ -12,7 +12,7 @@ const (
 
 // 利用go的init进行组件的自动注册
 func init() {
-	registerPlayerComponentCtor(ComponentNameBaseInfo, 0, func(player *Player, playerData *pb.PlayerData) gentity.Component {
+	_playerComponentRegister.Register(ComponentNameBaseInfo, 0, func(player *Player, _ any) gentity.Component {
 		component := &BaseInfo{
 			DataComponent: *gentity.NewDataComponent(player, ComponentNameBaseInfo),
 			BaseInfo: &pb.BaseInfo{
@@ -21,7 +21,6 @@ func init() {
 				LongFieldNameTest: "HelloWorld",
 			},
 		}
-		gentity.LoadData(component, playerData.GetBaseInfo())
 		return component
 	})
 }

@@ -79,6 +79,9 @@ func newTestPlayerFromData(data *pb.PlayerData) *Player {
 	p.Id = data.XId
 	// 初始化组件
 	_playerComponentRegister.InitComponents(p, data)
+	if data.BaseInfo != nil {
+		gentity.LoadEntityData(p, data)
+	}
 	return p
 }
 

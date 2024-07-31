@@ -9,6 +9,7 @@ import (
 	"strings"
 )
 
+// TODO:移除gnet依赖,网络辅助代码移到gnet或gserver
 // 消息回调接口信息
 type PacketHandlerInfo struct {
 	// 组件名,如果为空,就表示是直接写在Entity上的接口

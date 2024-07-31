@@ -2,7 +2,6 @@ package examples
 
 import (
 	"github.com/fish-tennis/gentity"
-	"github.com/fish-tennis/gentity/examples/pb"
 )
 
 const (
@@ -12,12 +11,10 @@ const (
 
 // 利用go的init进行组件的自动注册
 func init() {
-	registerPlayerComponentCtor(ComponentNameArray, 0, func(player *Player, playerData *pb.PlayerData) gentity.Component {
-		component := &ArrayComponent{
+	_playerComponentRegister.Register(ComponentNameArray, 0, func(player *Player, _ any) gentity.Component {
+		return &ArrayComponent{
 			DataComponent: *gentity.NewDataComponent(player, ComponentNameArray),
 		}
-		gentity.LoadData(component, playerData.GetArray())
-		return component
 	})
 }
 

@@ -36,6 +36,7 @@ type Application interface {
 
 // Application回调接口
 type ApplicationHook interface {
+	// TODO: 移除gnet依赖
 	OnRegisterServerHandler(serverHandler gnet.ConnectionHandler)
 	OnApplicationInit(initArg interface{})
 	OnApplicationExit()

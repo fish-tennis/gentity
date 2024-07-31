@@ -1,9 +1,7 @@
 # gentity
-游戏服务器中的实体对象的序列化,数据读写,缓存等接口,通过配置即可实现对象的数据保存加载,缓存更新,极大的简化编码
+实体对象的数据绑定(类似gorm),数据读写(序列化),缓存等接口,通过配置即可实现对象的数据保存加载,缓存更新,以简化业务编码
 
 基于gentity,游戏服务器框架可以更快的构建
-
-网络库使用[gnet](https://github.com/fish-tennis/gnet)
 
 ![gentity](https://github.com/fish-tennis/doc/blob/master/imgs/gentity/gentity.png)
 
@@ -24,8 +22,10 @@ gentity抽象出了实体的数据库接口EntityDb和实体的缓存接口KvCac
 
 gentity内置了EntityDb的mongodb实现,和KvCache的redis实现
 
-## struct tag
-使用go的struct tag,设置对象组件的字段,框架接口会自动对这些字段进行数据库读取保存和缓存更新,极大的简化了业务代码对数据库和缓存的操作
+## 数据绑定
+类似gorm(go Object Relation Mapping)对SQL进行对象映射,gentity的数据绑定对组件进行数据库和缓存的映射
+
+利用go的struct tag,设置对象组件的字段,框架接口会自动对这些字段进行数据库读取保存和缓存更新,极大的简化了业务代码对数据库和缓存的操作
 
 设置组件保存数据
 ```go
@@ -111,3 +111,6 @@ func (this *Quest) TriggerPlayerEntryGame(event *EventPlayerEntryGame) {
 
 ## 讨论
 QQ群: 764912827
+
+## TODO:
+移除gnet的依赖

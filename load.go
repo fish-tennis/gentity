@@ -19,6 +19,30 @@ type InterfaceMapLoader interface {
 	LoadFromBytesMap(bytesMap any) error
 }
 
+func LoadEntityData(entity Entity, entityData interface{}) error {
+	var err error
+	entity.RangeComponent(func(component Component) bool {
+		entityDataVal := reflect.ValueOf(entityData)
+		if entityDataVal.Kind() == reflect.Ptr {
+			entityDataVal = entityDataVal.Elem()
+		}
+		if util.IsValueNil(entityDataVal) {
+			return true
+		}
+		dataVal := entityDataVal.FieldByName(component.GetName())
+		if util.IsValueNil(dataVal) {
+			return true
+		}
+		err = LoadData(component, dataVal.Interface())
+		if err != nil {
+			GetLogger().Error("LoadEntityData %v %v err:%v", entity.GetId(), component.GetName(), err.Error())
+			return false
+		}
+		return true
+	})
+	return err
+}
+
 // 加载数据(反序列化)
 func LoadData(obj interface{}, sourceData interface{}) error {
 	if util.IsNil(sourceData) {
@@ -379,6 +403,13 @@ func loadField(obj any, sourceData any, fieldStruct *SaveableField) error {
 		return loadFieldSlice(obj, field, sourceData, fieldStruct)
 
 	case reflect.Map:
+		if fieldStruct.IsInterfaceMap() {
+			// InterfaceMap特殊处理
+			if interfaceMapLoader, ok := obj.(InterfaceMapLoader); ok {
+				GetLogger().Debug("InterfaceMapLoader %v", fieldStruct.Name)
+				return interfaceMapLoader.LoadFromBytesMap(sourceData)
+			}
+		}
 		return loadFieldMap(obj, field, sourceData, fieldStruct)
 
 	case reflect.Struct:

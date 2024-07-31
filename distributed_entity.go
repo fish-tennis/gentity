@@ -16,6 +16,8 @@ type DistributedEntityHelper interface {
 	// 根据entityId路由到目标服务器
 	// 返回值:服务器id
 	RouteServerId(entityId int64) int32
+
+	// TODO:移除gnet依赖
 	// 消息转换成路由消息
 	PacketToRoutePacket(from Entity, packet gnet.Packet, toEntityId int64) gnet.Packet
 	// 路由消息转换成RoutineEntity的逻辑消息

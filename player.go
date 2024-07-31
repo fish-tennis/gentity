@@ -17,6 +17,7 @@ type Player interface {
 	// 区服id
 	GetRegionId() int32
 
+	// TODO:移除gnet依赖
 	Send(command gnet.PacketCommand, message proto.Message, opts ...gnet.SendOption) bool
 
 	SendPacket(packet gnet.Packet, opts ...gnet.SendOption) bool

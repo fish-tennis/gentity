@@ -83,7 +83,7 @@ func TestShard(t *testing.T) {
 	if err != nil {
 		t.Logf("ShardDatabase err:%v", err)
 	}
-	deletePlayer(mongoDb, 1)
+	playerDb.DeleteEntity(1)
 	player1 := newTestPlayer(1, 1)
 	err, _ = playerDb.InsertEntity(player1.GetId(), getNewPlayerSaveData(player1))
 	if err != nil {

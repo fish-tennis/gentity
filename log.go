@@ -5,6 +5,7 @@ import (
 	"runtime"
 )
 
+// TODO:移除gnet依赖
 var _logger gnet.Logger
 
 // 设置日志接口

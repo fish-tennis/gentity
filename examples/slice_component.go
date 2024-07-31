@@ -12,12 +12,10 @@ const (
 
 // 利用go的init进行组件的自动注册
 func init() {
-	registerPlayerComponentCtor(ComponentNameSlice, 0, func(player *Player, playerData *pb.PlayerData) gentity.Component {
-		component := &SliceComponent{
+	_playerComponentRegister.Register(ComponentNameSlice, 0, func(player *Player, _ any) gentity.Component {
+		return &SliceComponent{
 			DataComponent: *gentity.NewDataComponent(player, ComponentNameSlice),
 		}
-		gentity.LoadData(component, playerData.GetSlice())
-		return component
 	})
 }
 
