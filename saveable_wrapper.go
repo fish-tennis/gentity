@@ -67,7 +67,7 @@ func NewMapData[K comparable, V any]() *MapData[K, V] {
 // MapData+BaseComponent
 type MapDataComponent[K comparable, V any] struct {
 	BaseComponent
-	MapData[K, V]
+	*MapData[K, V] `db:""`
 }
 
 func NewMapDataComponent[K comparable, V any](entity Entity, componentName string) *MapDataComponent[K, V] {
@@ -76,7 +76,7 @@ func NewMapDataComponent[K comparable, V any](entity Entity, componentName strin
 			entity: entity,
 			name:   componentName,
 		},
-		MapData: *NewMapData[K, V](),
+		MapData: NewMapData[K, V](),
 	}
 }
 
