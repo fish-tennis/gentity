@@ -3,7 +3,6 @@ package examples
 import (
 	"github.com/fish-tennis/gentity"
 	"github.com/fish-tennis/gentity/examples/pb"
-	"github.com/fish-tennis/gnet"
 	"google.golang.org/protobuf/proto"
 	"reflect"
 	"testing"
@@ -144,7 +143,7 @@ func TestSaveableStruct(t *testing.T) {
 }
 
 func TestChildSaveableStruct(t *testing.T) {
-	gnet.SetLogLevel(-1)
+	gentity.SetLogLevel(-1)
 	//bag := &Bag{
 	//	BagCountItem: &BagCountItem{},
 	//	BagUniqueItem: &BagUniqueItem{

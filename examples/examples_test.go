@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"github.com/fish-tennis/gentity"
 	"github.com/fish-tennis/gentity/examples/pb"
-	"github.com/fish-tennis/gnet"
 	"github.com/go-redis/redis/v8"
 	"google.golang.org/protobuf/proto"
 	"testing"
@@ -47,7 +46,7 @@ func initRedis() gentity.KvCache {
 
 // 测试根据账号查找角色的接口
 func TestFindPlayerId(t *testing.T) {
-	gnet.SetLogLevel(gnet.DebugLevel)
+	gentity.SetLogLevel(gentity.DebugLevel)
 	mongoDb := gentity.NewMongoDb(_mongoUri, _mongoDbName)
 	playerDb := mongoDb.RegisterPlayerDb(_collectionName, true, "_id", "AccountId", "RegionId")
 	if !mongoDb.Connect() {
@@ -91,7 +90,7 @@ func TestFindPlayerId(t *testing.T) {
 
 // 测试缓存接口
 func TestDbCache(t *testing.T) {
-	gnet.SetLogLevel(gnet.DebugLevel)
+	gentity.SetLogLevel(gentity.DebugLevel)
 	mongoDb := gentity.NewMongoDb(_mongoUri, _mongoDbName)
 	playerDb := mongoDb.RegisterPlayerDb(_collectionName, true, "_id", "AccountId", "RegionId")
 	if !mongoDb.Connect() {
@@ -193,7 +192,7 @@ func TestDbCache(t *testing.T) {
 
 // 测试从缓存修复数据的接口
 func TestFixDataFromCache(t *testing.T) {
-	gnet.SetLogLevel(gnet.DebugLevel)
+	gentity.SetLogLevel(gentity.DebugLevel)
 	mongoDb := gentity.NewMongoDb(_mongoUri, _mongoDbName)
 	playerDb := mongoDb.RegisterPlayerDb(_collectionName, true, "_id", "AccountId", "RegionId")
 	if !mongoDb.Connect() {
@@ -283,19 +282,10 @@ func TestFixDataFromCache(t *testing.T) {
 
 // 测试自动注册
 func TestHandlerRegister(t *testing.T) {
-	gnet.SetLogLevel(gnet.DebugLevel)
-	gentity.SetLogger(gnet.GetLogger())
+	gentity.SetLogLevel(gentity.DebugLevel)
 	// 注册消息回调接口和事件响应接口
 	autoRegisterTestPlayer()
 	player := newTestPlayer(0, 0)
-	// 模拟玩家收到一个网络消息
-	player.RecvPacket(gnet.NewProtoPacketEx(pb.CmdQuest_Cmd_FinishQuestReq, &pb.FinishQuestReq{
-		QuestCfgId: 123,
-	}))
-	// 模拟玩家收到一个网络消息
-	player.RecvPacket(gnet.NewProtoPacketEx(pb.CmdQuest_Cmd_FinishQuestRes, &pb.FinishQuestRes{
-		QuestCfgId: 456,
-	}))
 	// 模拟玩家分发一个事件
 	player.FireEvent(&PlayerEntryGame{
 		IsReconnect:    true,
@@ -308,7 +298,7 @@ func TestHandlerRegister(t *testing.T) {
 }
 
 func TestPlayerData(t *testing.T) {
-	gnet.SetLogLevel(gnet.DebugLevel)
+	gentity.SetLogLevel(gentity.DebugLevel)
 	mongoDb := gentity.NewMongoDb(_mongoUri, _mongoDbName)
 	playerDb := mongoDb.RegisterPlayerDb(_collectionName, true, "_id", "AccountId", "RegionId")
 	if !mongoDb.Connect() {

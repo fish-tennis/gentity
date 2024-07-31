@@ -2,7 +2,6 @@ package gentity
 
 import (
 	"context"
-	"github.com/fish-tennis/gnet"
 	"sync"
 )
 
@@ -13,7 +12,6 @@ var (
 
 // 进程接口
 type Application interface {
-
 	// 进程的唯一id
 	GetId() int32
 
@@ -36,9 +34,8 @@ type Application interface {
 
 // Application回调接口
 type ApplicationHook interface {
-	// TODO: 移除gnet依赖
-	OnRegisterServerHandler(serverHandler gnet.ConnectionHandler)
-	OnApplicationInit(initArg interface{})
+	OnRegisterServerHandler(arg any)
+	OnApplicationInit(initArg any)
 	OnApplicationExit()
 }
 

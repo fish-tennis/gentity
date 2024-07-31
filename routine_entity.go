@@ -14,9 +14,6 @@ type RoutineEntity interface {
 	// 将会在RoutineEntity的独立协程中被调用
 	PushMessage(message any)
 
-	//// push a Message and return the reply chan
-	//PushMessageBlock(message any) <-chan gnet.Packet
-
 	// 开启消息处理协程
 	// 每个RoutineEntity一个独立的消息处理协程
 	RunProcessRoutine(routineEntity RoutineEntity, routineArgs *RoutineEntityRoutineArgs) bool
@@ -36,18 +33,6 @@ type RoutineEntityRoutineArgs struct {
 	// 协程结束时调用
 	EndFunc func(routineEntity RoutineEntity)
 }
-
-//type RoutineMessage struct {
-//	Message any
-//	Reply   chan gnet.Packet // use for block mode
-//}
-//
-//func (rm *RoutineMessage) PutReply(reply gnet.Packet) {
-//	if rm.Reply == nil {
-//		return
-//	}
-//	rm.Reply <- reply
-//}
 
 // 独立协程的实体
 type BaseRoutineEntity struct {
@@ -85,16 +70,6 @@ func (this *BaseRoutineEntity) PushMessage(message any) {
 	GetLogger().Debug("PushMessage %v", message)
 	this.messages <- message
 }
-
-//func (this *BaseRoutineEntity) PushMessageBlock(message any) <-chan gnet.Packet {
-//	GetLogger().Debug("PushMessageBlock %v", message)
-//	blockMessage := &RoutineMessage{
-//		Message: message,
-//		Reply:   make(chan gnet.Packet, 1),
-//	}
-//	this.messages <- blockMessage
-//	return blockMessage.Reply
-//}
 
 // 开启消息处理协程
 // 每个RoutineEntity一个独立的消息处理协程

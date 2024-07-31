@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"github.com/fish-tennis/gentity"
 	"github.com/fish-tennis/gentity/examples/pb"
-	"github.com/fish-tennis/gnet"
 	"reflect"
 )
 
@@ -46,14 +45,10 @@ func (this *Player) FireEvent(event any) {
 	}
 }
 
-func (this *Player) RecvPacket(packet gnet.Packet) {
-	_playerPacketHandlerMgr.Invoke(this, packet)
-}
-
-// entity上的消息回调接口
-func (this *Player) OnFinishQuestRes(reqCmd gnet.PacketCommand, req *pb.FinishQuestRes) {
-	gentity.GetLogger().Debug("OnFinishQuestRes:%v", req)
-}
+//// entity上的消息回调接口
+//func (this *Player) OnFinishQuestRes(reqCmd gnet.PacketCommand, req *pb.FinishQuestRes) {
+//	gentity.GetLogger().Debug("OnFinishQuestRes:%v", req)
+//}
 
 // entity上的事件响应接口
 func (this *Player) TriggerPlayerEntryGame(evt *PlayerEntryGame) {

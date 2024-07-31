@@ -4,7 +4,6 @@ import (
 	"github.com/fish-tennis/gentity"
 	"github.com/fish-tennis/gentity/examples/pb"
 	"github.com/fish-tennis/gentity/util"
-	"github.com/fish-tennis/gnet"
 	"reflect"
 	"testing"
 )
@@ -98,7 +97,7 @@ func initSingleComponents(t *testing.T) {
 }
 
 func TestLoadMongo(t *testing.T) {
-	gnet.SetLogLevel(gnet.DebugLevel)
+	gentity.SetLogLevel(gentity.DebugLevel)
 	mongoDb := gentity.NewMongoDb(_mongoUri, _mongoDbName)
 	playerDb := mongoDb.RegisterPlayerDb(_collectionName, true, "_id", "AccountId", "RegionId")
 	if !mongoDb.Connect() {
@@ -118,7 +117,7 @@ func TestLoadMongo(t *testing.T) {
 }
 
 func TestSingleField(t *testing.T) {
-	gnet.SetLogLevel(gnet.DebugLevel)
+	gentity.SetLogLevel(gentity.DebugLevel)
 	mongoDb := gentity.NewMongoDb(_mongoUri, _mongoDbName)
 	playerDb := mongoDb.RegisterPlayerDb(_collectionName, true, "_id", "AccountId", "RegionId")
 	if !mongoDb.Connect() {
@@ -287,7 +286,7 @@ type ChildEntityData struct {
 }
 
 func TestMapField(t *testing.T) {
-	gnet.SetLogLevel(gnet.DebugLevel)
+	gentity.SetLogLevel(gentity.DebugLevel)
 	mongoDb := gentity.NewMongoDb(_mongoUri, _mongoDbName)
 	playerDb := mongoDb.RegisterPlayerDb(_collectionName, true, "_id", "AccountId", "RegionId")
 	if !mongoDb.Connect() {
@@ -431,7 +430,7 @@ func initChildComponents(t *testing.T) {
 }
 
 func TestChildFields(t *testing.T) {
-	gnet.SetLogLevel(gnet.DebugLevel)
+	gentity.SetLogLevel(gentity.DebugLevel)
 	mongoDb := gentity.NewMongoDb(_mongoUri, _mongoDbName)
 	playerDb := mongoDb.RegisterPlayerDb(_collectionName, true, "_id", "AccountId", "RegionId")
 	if !mongoDb.Connect() {

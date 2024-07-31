@@ -97,20 +97,14 @@ func (this *Quest) TriggerPlayerEntryGame(event *EventPlayerEntryGame) {
 示例:[gserver](https://github.com/fish-tennis/gserver) 里的玩家对象Player
 
 ## 分布式实体DistributedEntity
-分布式实体DistributedEntity在RoutineEntity的基础上增加了数据库加载接口,分布式锁接口,消息路由接口
+分布式实体DistributedEntity在RoutineEntity的基础上增加了数据库加载接口,分布式锁接口
 
 示例:[gserver](https://github.com/fish-tennis/gserver) 里的公会对象Guild
 
 ![distributed entity](https://github.com/fish-tennis/doc/blob/master/imgs/gentity/distributedentity.png)
-
-## 服务器自动组网
-服务器注册,发现,组网
 
 ## 项目演示
 分布式游戏服务器框架[gserver](https://github.com/fish-tennis/gserver)
 
 ## 讨论
 QQ群: 764912827
-
-## TODO:
-移除gnet的依赖
