@@ -1,5 +1,5 @@
 # gentity
-实体对象的数据绑定(类似gorm),数据读写(序列化),缓存等接口,通过配置即可实现对象的数据保存加载,缓存更新,以简化业务编码
+实体对象的数据绑定(类似gorm),数据读写(序列化),缓存等接口,通过配置即可实现对象的数据保存加载,缓存更新,以简化业务编码,并使业务代码和数据库&缓存解耦
 
 基于gentity,游戏服务器框架可以更快的构建
 
@@ -33,11 +33,9 @@ gentity内置了EntityDb的mongodb实现,和KvCache的redis实现
 type Money struct {
     DataComponent
     // 该字段必须导出(首字母大写)
-    // 使用struct tag来标记该字段需要存数据库,可以设置存储字段名(proto格式存mongo时,使用全小写格式)
+    // 使用struct tag来标记该字段需要存数据库
     Data *pb.Money `db:""`
 }
-//entity.SaveDb()会自动把Money.Data保存到mongo,保存时会自动进行proto序列化
-//entity.SaveCache()会自动把Money.Data缓存到redis,保存时会自动进行proto序列化
 ```
 
 支持明文方式保存数据
