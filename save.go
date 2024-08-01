@@ -338,6 +338,7 @@ func saveObjectChangedDataToDbByKey(entityDb EntityDb, obj any, entityKey interf
 	removeCacheAfterSaveDb bool, objName string, parentCacheKey string, record *saveDataRecord) {
 	objStruct := GetSaveableStruct(reflect.TypeOf(obj))
 	if objStruct == nil {
+		// 组件可以没有保存字段
 		return
 	}
 	if objStruct.IsSingleField() {
@@ -413,92 +414,6 @@ func SaveEntityChangedDataToDbByKey(entityDb EntityDb, entity Entity, entityKey 
 	entity.RangeComponent(func(component Component) bool {
 		saveObjectChangedDataToDbByKey(entityDb, component, entityKey, kvCache, removeCacheAfterSaveDb,
 			component.GetName(), GetEntityCacheKey(cachePrefix, entityKey), record)
-		//objStruct := GetSaveableStruct(reflect.TypeOf(component))
-		//if objStruct == nil {
-		//	return true
-		//}
-		//if objStruct.IsSingleField() {
-		//	depth := 0
-		//	// 找到实际需要保存的字段(叶子节点)
-		//	fieldObj, _ := GetSingleSaveableField(component, objStruct.Field, &depth)
-		//	if fieldObj == nil {
-		//		GetLogger().Error("%v %v.%v not find saveable field,depth:%v", entityKey, component.GetName(), objStruct.Field.Name, depth)
-		//		return true
-		//	}
-		//	GetLogger().Debug("GetSingleSaveableField %v %v.%v depth:%v", entityKey, component.GetName(), objStruct.Field.Name, depth)
-		//	if saveable, ok := fieldObj.(Saveable); ok {
-		//		// 如果某个组件数据没改变过,就无需保存
-		//		if !saveable.IsChanged() {
-		//			GetLogger().Debug("%v ignore %v", entityKey, component.GetName())
-		//			return true
-		//		}
-		//		saveData, err := GetSaveData(fieldObj, GetComponentSaveName(component))
-		//		if err != nil {
-		//			GetLogger().Error("%v Save %v err:%v", entityKey, component.GetName(), err.Error())
-		//			return true
-		//		}
-		//		// 使用protobuf存mongodb时,mongodb默认会把字段名转成小写,因为protobuf没设置bson tag
-		//		// TODO: use objStruct.Field.Name?
-		//		changedDatas[GetComponentSaveName(component)] = saveData
-		//		if removeCacheAfterSaveDb {
-		//			delKeys = append(delKeys, GetEntityComponentCacheKey(cachePrefix, entityKey, component.GetName()))
-		//		}
-		//		saved = append(saved, saveable)
-		//		GetLogger().Debug("SaveDb %v %v", entityKey, component.GetName())
-		//	}
-		//} else {
-		//	objVal := reflect.ValueOf(component).Elem()
-		//	for _, childStruct := range objStruct.Children {
-		//		childName := GetComponentSaveName(component) + "." + childStruct.Name
-		//		fieldVal := objVal.Field(childStruct.FieldIndex)
-		//		if util.IsValueNil(fieldVal) {
-		//			changedDatas[childName] = nil
-		//			continue
-		//		}
-		//		var fieldInterface any
-		//		if fieldVal.Kind() == reflect.Struct {
-		//			fieldInterface = convertStructToInterface(fieldVal)
-		//		} else {
-		//			fieldInterface = fieldVal.Interface()
-		//		}
-		//		if fieldInterface == nil {
-		//			GetLogger().Error("save %v %v.%v err", entityKey, component.GetName(), childName)
-		//			continue
-		//		}
-		//		fieldStruct := GetSaveableStruct(reflect.TypeOf(fieldInterface))
-		//		if fieldStruct != nil {
-		//			depth := 0
-		//			// 找到实际需要保存的字段(叶子节点)
-		//			fieldInterface, _ = GetSingleSaveableField(fieldInterface, fieldStruct.Field, &depth)
-		//			if fieldInterface == nil {
-		//				GetLogger().Error("%v %v.%v not find saveable field,depth:%v", entityKey, component.GetName(), fieldStruct.Field.Name, depth)
-		//				continue
-		//			}
-		//			GetLogger().Debug("GetSingleSaveableField %v %v.%v depth:%v", entityKey, component.GetName(), fieldStruct.Field.Name, depth)
-		//		}
-		//		if saveable, ok := fieldInterface.(Saveable); ok {
-		//			// 如果某个组件数据没改变过,就无需保存
-		//			if !saveable.IsChanged() {
-		//				GetLogger().Debug("%v ignore %v.%v", entityKey, component.GetName(), childName)
-		//				continue
-		//			}
-		//			childSaveData, err := GetSaveData(fieldInterface, childName)
-		//			if err != nil {
-		//				GetLogger().Error("%v Save %v.%v err:%v", entityKey, component.GetName(), childName, err.Error())
-		//				continue
-		//			}
-		//			changedDatas[childName] = childSaveData
-		//			if removeCacheAfterSaveDb {
-		//				delKeys = append(delKeys, GetEntityComponentChildCacheKey(cachePrefix, entityKey, component.GetName(), childStruct.Name))
-		//			}
-		//			saved = append(saved, saveable)
-		//			GetLogger().Debug("SaveDb %v %v.%v", entityKey, component.GetName(), childName)
-		//		} else {
-		//			GetLogger().Error("%v not Saveable %v.%v", entityKey, component.GetName(), childName)
-		//			continue
-		//		}
-		//	}
-		//}
 		return true
 	})
 	if len(record.changedData) == 0 {
@@ -533,6 +448,7 @@ func GetEntitySaveData(entity Entity, componentDatas map[string]interface{}) {
 	entity.RangeComponent(func(component Component) bool {
 		structCache := GetSaveableStruct(reflect.TypeOf(component))
 		if structCache == nil {
+			// 组件可以没有保存字段
 			return true
 		}
 		saveData, err := GetComponentSaveData(component)

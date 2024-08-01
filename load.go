@@ -22,6 +22,11 @@ type InterfaceMapLoader interface {
 func LoadEntityData(entity Entity, entityData interface{}) error {
 	var err error
 	entity.RangeComponent(func(component Component) bool {
+		objStruct := GetSaveableStruct(reflect.TypeOf(component))
+		if objStruct == nil {
+			// 组件可以没有保存字段
+			return true
+		}
 		entityDataVal := reflect.ValueOf(entityData)
 		if entityDataVal.Kind() == reflect.Ptr {
 			entityDataVal = entityDataVal.Elem()
@@ -588,7 +593,7 @@ func loadFieldFromCache(obj any, kvCache KvCache, cacheKey string, fieldStruct *
 func LoadFromCache(obj interface{}, kvCache KvCache, cacheKey string) (bool, error) {
 	objStruct := GetSaveableStruct(reflect.TypeOf(obj))
 	if objStruct == nil {
-		return false, ErrUnsupportedType
+		return false, ErrNotSaveableStruct
 	}
 	if objStruct.IsSingleField() {
 		depth := 0
@@ -633,6 +638,7 @@ func FixEntityDataFromCache(entity Entity, db EntityDb, kvCache KvCache, cacheKe
 	entity.RangeComponent(func(component Component) bool {
 		objStruct := GetSaveableStruct(reflect.TypeOf(component))
 		if objStruct == nil {
+			// 组件可以没有保存字段
 			return true
 		}
 		if objStruct.IsSingleField() {
