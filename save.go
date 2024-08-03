@@ -345,7 +345,7 @@ func saveObjectChangedDataToDbByKey(entityDb EntityDb, obj any, entityKey interf
 			}
 			record.changedData[childName] = saveData
 			if removeCacheAfterSaveDb {
-				record.delKeys = append(record.delKeys, fmt.Sprintf("%v.%v", parentCacheKey, childStruct.Name))
+				record.delKeys = append(record.delKeys, fmt.Sprintf("%v.%v", parentCacheKey, childName))
 			}
 			record.saved = append(record.saved, saveable)
 			GetLogger().Debug("SaveDb Child %v %v", entityKey, childName)
