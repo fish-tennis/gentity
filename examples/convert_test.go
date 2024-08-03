@@ -90,7 +90,7 @@ func TestSaveableStruct(t *testing.T) {
 		// 不支持的类型
 		Any any `db:""`
 	}
-	s := gentity.GetSaveableStruct(reflect.TypeOf(&AnyField{}))
+	s := gentity.GetObjSaveableStruct(&AnyField{})
 	t.Logf("FieldStruct:%v", s)
 
 	type Item struct {
@@ -101,7 +101,7 @@ func TestSaveableStruct(t *testing.T) {
 		Item    pb.QuestData `db:""`
 		ItemPtr *Item
 	}
-	s = gentity.GetSaveableStruct(reflect.TypeOf(&StructField{}))
+	s = gentity.GetObjSaveableStruct(&StructField{})
 	t.Logf("FieldStruct:%v", s)
 
 	obj := &StructField{}
@@ -154,7 +154,7 @@ func TestChildSaveableStruct(t *testing.T) {
 	//gentity.GetSaveableStruct(reflect.TypeOf(bag))
 
 	player := newTestPlayer(1, 1)
-	gentity.GetEntitySaveableStruct(player)
+	gentity.ParseEntitySaveableStruct(player)
 	bag := player.GetBag()
 	for i := 0; i < 3; i++ {
 		bag.BagCountItem.AddItem(int32(i+1), int32((i+1)*10))
@@ -165,7 +165,7 @@ func TestChildSaveableStruct(t *testing.T) {
 	//}
 	//t.Log(fmt.Sprintf("%v", saveData))
 
-	structCache := gentity.GetSaveableStruct(reflect.TypeOf(bag.BagCountItem))
+	structCache := gentity.GetObjSaveableStruct(bag.BagCountItem)
 	objVal := reflect.ValueOf(bag.BagCountItem).Elem()
 	field := objVal.Field(structCache.Field.FieldIndex)
 	fieldInterface := field.Interface()

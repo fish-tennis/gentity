@@ -14,4 +14,5 @@ var (
 	ErrEntityNotExists       = errors.New("entity not exists")
 	ErrConvertRoutineMessage = errors.New("convert routine message error")
 	ErrSourceDataType        = errors.New("sourceData type error")
+	ErrNotSaveable           = errors.New("not saveable")
 )
