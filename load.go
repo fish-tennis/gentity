@@ -42,7 +42,7 @@ func LoadEntityData(entity Entity, entityData interface{}) error {
 			GetLogger().Error("LoadEntityData %v %v entityData's field CantInterface", entity.GetId(), component.GetName())
 			return false
 		}
-		err = LoadComponentData(component, dataVal.Interface())
+		err = LoadObjData(component, dataVal.Interface())
 		if err != nil {
 			GetLogger().Error("LoadEntityData %v %v err:%v", entity.GetId(), component.GetName(), err.Error())
 			return false
@@ -52,7 +52,7 @@ func LoadEntityData(entity Entity, entityData interface{}) error {
 	return err
 }
 
-func LoadComponentData(obj Component, sourceData interface{}) error {
+func LoadObjData(obj any, sourceData interface{}) error {
 	if util.IsNil(sourceData) {
 		return nil
 	}
@@ -63,7 +63,7 @@ func LoadComponentData(obj Component, sourceData interface{}) error {
 	if objStruct.IsSingleField() {
 		saveable, saveableField := objStruct.GetSingleSaveable(obj)
 		if saveable == nil {
-			GetLogger().Error("LoadComponentData %v Err:obj not a saveable", objStruct.Field.Name)
+			GetLogger().Error("LoadObjData %v Err:obj not a saveable", objStruct.Field.Name)
 			return ErrNotSaveable
 		}
 		err := loadField(saveable, sourceData, saveableField)
@@ -102,12 +102,12 @@ func LoadComponentData(obj Component, sourceData interface{}) error {
 			}
 			saveable, saveableField := objStruct.GetChildSaveable(obj, childIndex)
 			if saveable == nil {
-				GetLogger().Error("LoadComponentData %v Err:field not a saveable", childStruct.Name)
+				GetLogger().Error("LoadObjData %v Err:field not a saveable", childStruct.Name)
 				return ErrNotSaveable
 			}
 			childLoadErr := loadField(saveable, sourceFieldVal.Interface(), saveableField)
 			if childLoadErr != nil {
-				GetLogger().Error("LoadComponentData error field:%v", saveableField.Name)
+				GetLogger().Error("LoadObjData error field:%v", saveableField.Name)
 				return childLoadErr
 			}
 		}
@@ -129,65 +129,6 @@ func LoadComponentData(obj Component, sourceData interface{}) error {
 		//		return childLoadErr
 		//	}
 		//}
-	}
-	return nil
-}
-
-// 加载数据(反序列化)
-func LoadData(obj interface{}, sourceData interface{}) error {
-	if util.IsNil(sourceData) {
-		return nil
-	}
-	objStruct := GetSaveableStruct(reflect.TypeOf(obj))
-	if objStruct == nil {
-		return ErrNotSaveableStruct
-	}
-	if objStruct.IsSingleField() {
-		err := loadField(obj, sourceData, objStruct.Field)
-		if err != nil {
-			GetLogger().Error("loadFieldError:%v fieldName:%v", err.Error(), objStruct.Field.Name)
-		}
-		return err
-	} else {
-		objVal := reflect.ValueOf(obj)
-		if objVal.Kind() == reflect.Ptr {
-			objVal = objVal.Elem()
-		}
-		sourceTyp := reflect.TypeOf(sourceData)
-		// 如果是结构,先转换成map
-		if sourceTyp.Kind() == reflect.Ptr || sourceTyp.Kind() == reflect.Struct {
-			// mongodb中读出来是proto.Message格式,转换成map[string]interface{}
-			protoMessage, ok := sourceData.(proto.Message)
-			if ok {
-				sourceData = ConvertProtoToMap(protoMessage)
-			} else {
-				sourceData = ConvertObjectToMap(sourceData, false)
-			}
-			sourceTyp = reflect.TypeOf(sourceData)
-		}
-		if sourceTyp.Kind() != reflect.Map {
-			GetLogger().Error("unsupported type:%v", sourceTyp.Kind())
-			return ErrSourceDataType
-		}
-		sourceVal := reflect.ValueOf(sourceData)
-		for _, childStruct := range objStruct.Children {
-			sourceFieldVal := sourceVal.MapIndex(reflect.ValueOf(childStruct.Name))
-			if !sourceFieldVal.IsValid() {
-				GetLogger().Debug("saveable not exists:%v", childStruct.Name)
-				continue
-			}
-			fieldVal := objVal.Field(childStruct.FieldIndex)
-			if !childStruct.InitNilField(fieldVal) {
-				GetLogger().Error("child nil %v", childStruct.Name)
-				continue
-			}
-			fieldInterface := fieldVal.Interface()
-			childLoadErr := LoadData(fieldInterface, sourceFieldVal.Interface())
-			if childLoadErr != nil {
-				GetLogger().Error("child load error field:%v", childStruct.Name)
-				return childLoadErr
-			}
-		}
 	}
 	return nil
 }
@@ -402,12 +343,12 @@ func loadFieldStruct(obj any, field reflect.Value, data any, fieldStruct *Saveab
 		}
 	}
 	if dataTyp.Kind() != reflect.Struct {
-		// 特殊结构体的赋值,如MapData[K comparable, V any]
-		if fieldInterface := convertStructToInterface(field); fieldInterface != nil {
-			if _, ok := fieldInterface.(Saveable); ok {
-				return LoadData(fieldInterface, data)
-			}
-		}
+		//// 特殊结构体的赋值,如MapData[K comparable, V any]
+		//if fieldInterface := convertStructToInterface(field); fieldInterface != nil {
+		//	if _, ok := fieldInterface.(Saveable); ok {
+		//		return LoadData(fieldInterface, data)
+		//	}
+		//}
 		GetLogger().Error("unsupported type,fieldName:%v dataType:%v", fieldStruct.Name, dataTyp.Kind())
 		return errors.New(fmt.Sprintf("data not a struct,fieldName:%v", fieldStruct.Name))
 	}
@@ -481,9 +422,9 @@ func loadField(obj any, sourceData any, fieldStruct *SaveableField) error {
 		if _, ok := fieldInterface.(proto.Message); ok {
 			return loadFieldProto(obj, field, sourceData, fieldStruct)
 		}
-		if _, ok := fieldInterface.(Saveable); ok {
-			return LoadData(fieldInterface, sourceData)
-		}
+		//if _, ok := fieldInterface.(Saveable); ok {
+		//	return LoadData(fieldInterface, sourceData)
+		//}
 		return errors.New(fmt.Sprintf("ptr is not a proto.Message,fieldName:%v", fieldStruct.Name))
 
 	case reflect.Interface:
@@ -510,39 +451,39 @@ func loadField(obj any, sourceData any, fieldStruct *SaveableField) error {
 	}
 }
 
-// 返回obj的map字段
-func getMapField(obj Saveable) (any, error) {
-	structCache := GetSaveableStruct(reflect.TypeOf(obj))
-	if structCache == nil {
-		return nil, ErrNotSaveableStruct
-	}
-	if structCache.IsSingleField() {
-		fieldStruct := structCache.Field
-		objVal := reflect.ValueOf(obj)
-		if objVal.Kind() == reflect.Ptr {
-			objVal = objVal.Elem()
-		}
-		// 字段value
-		field := objVal.Field(fieldStruct.FieldIndex)
-		switch fieldStruct.StructField.Type.Kind() {
-		case reflect.Map: // 不支持 *map
-			return field.Interface(), nil
-
-		case reflect.Ptr:
-			if saveableField, ok := field.Interface().(Saveable); ok {
-				return getMapField(saveableField)
-			}
-
-		case reflect.Struct:
-			if fieldInterface := convertStructToInterface(field); fieldInterface != nil {
-				if saveableField, ok := fieldInterface.(Saveable); ok {
-					return getMapField(saveableField)
-				}
-			}
-		}
-	}
-	return nil, ErrUnsupportedType
-}
+//// 返回obj的map字段
+//func getMapField(obj Saveable) (any, error) {
+//	structCache := GetSaveableStruct(reflect.TypeOf(obj))
+//	if structCache == nil {
+//		return nil, ErrNotSaveableStruct
+//	}
+//	if structCache.IsSingleField() {
+//		fieldStruct := structCache.Field
+//		objVal := reflect.ValueOf(obj)
+//		if objVal.Kind() == reflect.Ptr {
+//			objVal = objVal.Elem()
+//		}
+//		// 字段value
+//		field := objVal.Field(fieldStruct.FieldIndex)
+//		switch fieldStruct.StructField.Type.Kind() {
+//		case reflect.Map: // 不支持 *map
+//			return field.Interface(), nil
+//
+//		case reflect.Ptr:
+//			if saveableField, ok := field.Interface().(Saveable); ok {
+//				return getMapField(saveableField)
+//			}
+//
+//		case reflect.Struct:
+//			if fieldInterface := convertStructToInterface(field); fieldInterface != nil {
+//				if saveableField, ok := fieldInterface.(Saveable); ok {
+//					return getMapField(saveableField)
+//				}
+//			}
+//		}
+//	}
+//	return nil, ErrUnsupportedType
+//}
 
 // 从缓存加载字段
 func loadFieldFromCache(obj any, kvCache KvCache, cacheKey string, fieldStruct *SaveableField) (bool, error) {
@@ -625,27 +566,27 @@ func loadFieldFromCache(obj any, kvCache KvCache, cacheKey string, fieldStruct *
 				// 普通map
 				mapField = field.Interface()
 
-			case reflect.Ptr:
-				// 可能是MapData
-				fieldInterface := field.Interface()
-				if saveableField, ok := fieldInterface.(Saveable); ok {
-					mapField, err = getMapField(saveableField)
-					if err != nil {
-						GetLogger().Error("getMapFieldErr %v %v err:%v", cacheKey, cacheType, err)
-						return true, err
-					}
-				}
-
-			case reflect.Struct:
-				if fieldInterface := convertStructToInterface(field); fieldInterface != nil {
-					if saveableField, ok := fieldInterface.(Saveable); ok {
-						mapField, err = getMapField(saveableField)
-						if err != nil {
-							GetLogger().Error("getMapFieldErr %v %v err:%v", cacheKey, cacheType, err)
-							return true, err
-						}
-					}
-				}
+			//case reflect.Ptr:
+			//	// 可能是MapData
+			//	fieldInterface := field.Interface()
+			//	if saveableField, ok := fieldInterface.(Saveable); ok {
+			//		mapField, err = getMapField(saveableField)
+			//		if err != nil {
+			//			GetLogger().Error("getMapFieldErr %v %v err:%v", cacheKey, cacheType, err)
+			//			return true, err
+			//		}
+			//	}
+			//
+			//case reflect.Struct:
+			//	if fieldInterface := convertStructToInterface(field); fieldInterface != nil {
+			//		if saveableField, ok := fieldInterface.(Saveable); ok {
+			//			mapField, err = getMapField(saveableField)
+			//			if err != nil {
+			//				GetLogger().Error("getMapFieldErr %v %v err:%v", cacheKey, cacheType, err)
+			//				return true, err
+			//			}
+			//		}
+			//	}
 
 			default:
 				GetLogger().Error("%v unsupport cache type:%v", cacheKey, cacheType)

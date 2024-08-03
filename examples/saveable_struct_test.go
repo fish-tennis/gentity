@@ -147,7 +147,7 @@ func TestSingleField(t *testing.T) {
 			if util.IsValueNil(dataVal) {
 				return true
 			}
-			loadErr := gentity.LoadComponentData(component, dataVal.Interface())
+			loadErr := gentity.LoadObjData(component, dataVal.Interface())
 			if loadErr != nil {
 				t.Logf("loadErr:%v", loadErr.Error())
 				return true
@@ -372,7 +372,7 @@ func TestMapField(t *testing.T) {
 		if util.IsValueNil(dataVal) {
 			return true
 		}
-		loadErr := gentity.LoadData(component, dataVal.Interface())
+		loadErr := gentity.LoadObjData(component, dataVal.Interface())
 		if loadErr != nil {
 			t.Logf("loadErr:%v", loadErr.Error())
 			return true

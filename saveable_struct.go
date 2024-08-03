@@ -181,16 +181,6 @@ func (this *SaveableField) IsInterfaceMap() bool {
 	if typ.Kind() == reflect.Ptr {
 		typ = typ.Elem()
 	}
-	if typ.Kind() == reflect.Struct {
-		childStruct := GetSaveableStruct(typ)
-		if childStruct == nil {
-			return false
-		}
-		if !childStruct.IsSingleField() {
-			return false
-		}
-		return childStruct.Field.IsInterfaceMap()
-	}
 	if typ.Kind() != reflect.Map {
 		return false
 	}
@@ -285,22 +275,22 @@ func newSaveableStructsMap() *safeSaveableStructsMap {
 	}
 }
 
-func GetSaveableStruct(reflectType reflect.Type) *SaveableStruct {
-	return GetSaveableStructChild(reflectType, false)
-}
+//func GetSaveableStruct(reflectType reflect.Type) *SaveableStruct {
+//	return GetSaveableStructChild(reflectType, false)
+//}
 
-func GetSaveableStructReadonly(reflectType reflect.Type) *SaveableStruct {
-	if reflectType.Kind() == reflect.Ptr {
-		reflectType = reflectType.Elem()
-	}
-	if reflectType.Kind() != reflect.Struct {
-		return nil
-	}
-	if cacheStruct, ok := _saveableStructsMap.Get(reflectType); ok {
-		return cacheStruct
-	}
-	return nil
-}
+//func GetSaveableStructReadonly(reflectType reflect.Type) *SaveableStruct {
+//	if reflectType.Kind() == reflect.Ptr {
+//		reflectType = reflectType.Elem()
+//	}
+//	if reflectType.Kind() != reflect.Struct {
+//		return nil
+//	}
+//	if cacheStruct, ok := _saveableStructsMap.Get(reflectType); ok {
+//		return cacheStruct
+//	}
+//	return nil
+//}
 
 // 获取对象的结构描述
 // 如果缓存过,则直接从缓存中获取
@@ -511,9 +501,9 @@ func parseField(rootObj any, newStruct *SaveableStruct, fieldStruct reflect.Stru
 	}
 	if fieldTyp.Kind() != reflect.Struct {
 		if tagKeyword == KeywordDb {
-			GetLogger().Info("parseField %v field:%v fieldType:%v depth:%v", getObjOrComponentName(rootObj), fieldStruct.Name, fieldTyp.String(), depth)
+			GetLogger().Debug("parseField %v field:%v fieldType:%v depth:%v", getObjOrComponentName(rootObj), fieldStruct.Name, fieldTyp.String(), depth)
 		} else {
-			GetLogger().Info("parseField %v.%v field:%v fieldType:%v depth:%v", getObjOrComponentName(rootObj), name, fieldStruct.Name, fieldTyp.String(), depth)
+			GetLogger().Debug("parseField %v.%v field:%v fieldType:%v depth:%v", getObjOrComponentName(rootObj), name, fieldStruct.Name, fieldTyp.String(), depth)
 		}
 		return saveableField
 	}
@@ -531,7 +521,7 @@ func getObjOrComponentName(obj any) string {
 	if component, ok := obj.(Component); ok {
 		return component.GetName()
 	}
-	return reflect.TypeOf(obj).Name()
+	return reflect.TypeOf(obj).String()
 }
 
 func parseStruct(rootObj any, structTyp reflect.Type, newStruct *SaveableStruct, parentField *SaveableField) *SaveableStruct {
@@ -544,7 +534,7 @@ func parseStruct(rootObj any, structTyp reflect.Type, newStruct *SaveableStruct,
 		}
 		newStruct.Field = saveableField
 		if parentField == nil {
-			GetLogger().Info("db %v.%v plain:%v", getObjOrComponentName(rootObj), saveableField.StructField.Name, saveableField.IsPlain)
+			GetLogger().Debug("db %v.%v plain:%v", getObjOrComponentName(rootObj), saveableField.StructField.Name, saveableField.IsPlain)
 		}
 	}
 	// child关键字只能用在第1层字段
@@ -560,7 +550,7 @@ func parseStruct(rootObj any, structTyp reflect.Type, newStruct *SaveableStruct,
 				continue
 			}
 			newStruct.Children = append(newStruct.Children, saveableField)
-			GetLogger().Info("child %v.%v plain:%v", structTyp.Name(), saveableField.Name, saveableField.IsPlain)
+			GetLogger().Debug("child %v.%v plain:%v", structTyp.Name(), saveableField.Name, saveableField.IsPlain)
 		}
 	}
 	if newStruct.Field == nil && len(newStruct.Children) == 0 {

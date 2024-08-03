@@ -22,65 +22,6 @@ func GetComponentSaveName(component Component) string {
 	return component.GetName()
 }
 
-func GetSingleSaveableField(obj any, field *SaveableField, depth *int) (any, *SaveableField) {
-	// 这里只读获取
-	fieldStruct := GetSaveableStructReadonly(field.StructField.Type)
-	if fieldStruct == nil {
-		// 字段不是SaveableStruct,返回自身,如:
-		// type PlayerTimeRecord struct {
-		//   BaseDirtyMark
-		//   *pb.TimeRecord `db:"TimeRecord"`
-		// }
-		// 或
-		// type PlayerTimeRecord struct {
-		//   BaseDirtyMark
-		//   record *pb.TimeRecord `db:"TimeRecord"`
-		// }
-		return obj, field
-	}
-	// 限制嵌套层次
-	if *depth >= 8 {
-		GetLogger().Error("GetSingleSaveableFieldDepthLimit depth:%v field:%v", *depth, field.Name)
-		return nil, nil
-	}
-	// 字段是SaveableStruct,则往下一层结构寻找
-	objVal := reflect.ValueOf(obj)
-	if objVal.Kind() == reflect.Ptr {
-		objVal = objVal.Elem()
-	}
-	fieldVal := objVal.Field(field.FieldIndex)
-	if !fieldVal.CanInterface() {
-		GetLogger().Error("GetSingleSaveableFieldErr field:%v", field.Name)
-		return nil, nil
-	}
-	var fieldInterface any
-	if fieldVal.Kind() == reflect.Struct {
-		fieldInterface = convertStructToInterface(fieldVal)
-	} else {
-		fieldInterface = fieldVal.Interface()
-	}
-	if fieldInterface == nil {
-		GetLogger().Error("GetSingleSaveableFieldErr field:%v", field.Name)
-		return nil, nil
-	}
-	if !IsSaveable(fieldInterface) && IsSaveable(obj) {
-		// obj已经是DirtyMark或MapDirtyMark了,如果fieldInterface仍然是DirtyMark或MapDirtyMark,则继续下钻,如匿名字段是Saveable的情况
-		// type EmbedStruct struct {
-		//   *entity.ProtoData[*pb.Xxx] `db:"Field"`
-		// }
-		// EmbedStruct是Saveable,但是匿名字段也是Saveable,所以要继续下钻到*entity.ProtoData,最终找到ProtoData.Data
-		// 否则obj就是叶子节点了
-		return obj, field
-	}
-	*depth = *depth + 1
-	// 下一层只支持单保存字段
-	if !fieldStruct.IsSingleField() {
-		GetLogger().Error("GetSingleSaveableFieldErr field:%v", field.Name)
-		return nil, nil
-	}
-	return GetSingleSaveableField(fieldInterface, fieldStruct.Field, depth)
-}
-
 func SaveObjectChangedDataToCache(kvCache KvCache, parentCacheKey string, obj any) {
 	objStruct := GetObjSaveableStruct(obj)
 	if objStruct == nil {
@@ -715,9 +656,9 @@ func getSaveDataOfSaveable(saveable Saveable, saveableField *SaveableField, pare
 }
 
 // 获取对象的保存数据
-func GetSaveData(obj interface{}, parentName string) (interface{}, error) {
-	structCache := GetSaveableStruct(reflect.TypeOf(obj))
-	if structCache == nil {
+func GetSaveData(obj any, parentName string) (interface{}, error) {
+	objStruct := GetObjSaveableStruct(obj)
+	if objStruct == nil {
 		GetLogger().Error("not saveable %v type:%v", parentName, reflect.TypeOf(obj))
 		return nil, nil
 	}
@@ -725,79 +666,42 @@ func GetSaveData(obj interface{}, parentName string) (interface{}, error) {
 	if objVal.Kind() == reflect.Ptr {
 		objVal = objVal.Elem()
 	}
-	if structCache.IsSingleField() {
-		fieldStruct := structCache.Field
-		field := objVal.Field(fieldStruct.FieldIndex)
-		if util.IsValueNil(field) {
-			return nil, nil
+	if objStruct.IsSingleField() {
+		saveable, saveableField := objStruct.GetSingleSaveable(obj)
+		if saveable == nil {
+			// return nil, nil
+			GetLogger().Error("GetSaveData %v.%v err", parentName, objStruct.Field.Name)
+			return nil, ErrUnsupportedType
 		}
-		// 明文保存的数据
-		if fieldStruct.IsPlain {
-			// 明文保存的特殊结构体需要特殊处理,如MapData[K comparable, V any]
-			switch field.Kind() {
-			case reflect.Ptr:
-				if field.CanInterface() {
-					fieldInterface := field.Interface()
-					if _, ok := fieldInterface.(Saveable); ok {
-						return getSaveableSaveData(fieldInterface, parentName, fieldStruct)
-					}
-				}
-			case reflect.Struct:
-				if fieldInterface := convertStructToInterface(field); fieldInterface != nil {
-					if _, ok := fieldInterface.(Saveable); ok {
-						return getSaveableSaveData(fieldInterface, parentName, fieldStruct)
-					}
-				}
-			}
-			fieldInterface := field.Interface()
-			if _, ok := fieldInterface.(Saveable); ok {
-				return getSaveableSaveData(field.Interface(), parentName, fieldStruct)
-			}
-			// 明文保存的普通数据,直接返回原始数据
-			return fieldInterface, nil
-		}
-		// 非明文保存的数据,一般用于对proto进行序列化
-		switch field.Kind() {
-		case reflect.Map:
-			return saveFieldMap(obj, field, parentName, fieldStruct)
-		case reflect.Slice:
-			return saveFieldSlice(obj, field, parentName, fieldStruct)
-		case reflect.Ptr:
-			return saveFieldPtr(obj, field, parentName, fieldStruct)
-		case reflect.Struct:
-			return saveFieldStruct(obj, field, parentName, fieldStruct)
-		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-			return field.Int(), nil
-		case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-			return field.Uint(), nil
-		case reflect.Bool:
-			return field.Bool(), nil
-		case reflect.Float32, reflect.Float64:
-			return field.Float(), nil
-		case reflect.Complex64, reflect.Complex128:
-			return field.Complex(), nil
-		case reflect.String:
-			return field.String(), nil
-		default:
-			GetLogger().Error("%v.%v unsupported type:%v", parentName, fieldStruct.Name, field.Kind())
-			return nil, ErrUnsupportedKeyType
-		}
+		return getSaveDataOfSaveable(saveable, saveableField, parentName)
 	} else {
 		// 多个child子模块的组合
 		compositeSaveData := make(map[string]interface{})
-		for _, fieldCache := range structCache.Children {
-			childName := parentName + "." + fieldCache.Name
-			val := objVal.Field(fieldCache.FieldIndex)
-			if util.IsValueNil(val) {
-				compositeSaveData[fieldCache.Name] = nil
-				continue
+		for childIndex, childStruct := range objStruct.Children {
+			saveable, saveableField := objStruct.GetChildSaveable(obj, childIndex)
+			if saveable == nil {
+				GetLogger().Error("GetSaveData %v Err:field not a saveable", childStruct.Name)
+				return nil, ErrNotSaveable
 			}
-			fieldInterface := val.Interface()
-			childSaveData, err := GetSaveData(fieldInterface, childName)
+			childName := parentName + "." + childStruct.Name
+			childSaveData, err := getSaveDataOfSaveable(saveable, saveableField, childName)
 			if err != nil {
+				GetLogger().Error("GetSaveDataErr %v", childName)
 				return nil, err
 			}
-			compositeSaveData[fieldCache.Name] = childSaveData
+			compositeSaveData[childStruct.Name] = childSaveData
+
+			//val := objVal.Field(childStruct.FieldIndex)
+			//if util.IsValueNil(val) {
+			//	compositeSaveData[childStruct.Name] = nil
+			//	continue
+			//}
+			//fieldInterface := val.Interface()
+			//childSaveData, err := GetSaveData(fieldInterface, childName)
+			//if err != nil {
+			//	return nil, err
+			//}
+			//compositeSaveData[childStruct.Name] = childSaveData
 		}
 		return compositeSaveData, nil
 	}

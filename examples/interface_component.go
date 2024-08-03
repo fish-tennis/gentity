@@ -55,7 +55,7 @@ func (im *InterfaceMap) LoadFromBytesMap(bytesMap any) error {
 		if ctor, ok := registerValueCtor[k]; ok {
 			// 动态构造
 			val := ctor()
-			err := gentity.LoadData(val, v)
+			err := gentity.LoadObjData(val, v)
 			if err != nil {
 				gentity.GetLogger().Error("loadDataErr %v %v", k, err.Error())
 				continue
