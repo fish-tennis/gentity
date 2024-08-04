@@ -569,13 +569,6 @@ func LoadFromCache(obj interface{}, kvCache KvCache, cacheKey string) (bool, err
 		return false, ErrNotSaveableStruct
 	}
 	if objStruct.IsSingleField() {
-		//depth := 0
-		//// 找到实际需要加载的字段(叶子节点)
-		//fieldObj, fieldStruct := GetSingleSaveableField(obj, objStruct.Field, &depth)
-		//if fieldObj == nil {
-		//	GetLogger().Error("LoadFromCache %v err depth:%v", cacheKey, depth)
-		//	return false, ErrUnsupportedType
-		//}
 		saveable, saveableField := objStruct.GetSingleSaveable(obj)
 		if saveable == nil {
 			GetLogger().Error("LoadFromCache %v err", cacheKey)
@@ -595,14 +588,7 @@ func LoadFromCache(obj interface{}, kvCache KvCache, cacheKey string) (bool, err
 				GetLogger().Error("nil %v", childStruct.Name)
 				return true, errors.New(fmt.Sprintf("%v nil", childStruct.Name))
 			}
-			hasCache, err := loadFieldFromCache(saveable, kvCache, cacheKey, saveableField)
-			//val := objVal.Field(childStruct.FieldIndex)
-			//if !childStruct.InitNilField(val) {
-			//	GetLogger().Error("nil %v", childStruct.Name)
-			//	return true, errors.New(fmt.Sprintf("%v nil", childStruct.Name))
-			//}
-			//fieldInterface := val.Interface()
-			//hasCache, err := LoadFromCache(fieldInterface, kvCache, cacheKey+"."+childStruct.Name)
+			hasCache, err := loadFieldFromCache(saveable, kvCache, cacheKey+"."+childStruct.Name, saveableField)
 			if !hasCache {
 				continue
 			}
