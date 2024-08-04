@@ -103,7 +103,6 @@ func saveDirtyMark(kvCache KvCache, obj interface{}, cacheKeyName string, fieldC
 		}
 		dirtyMark.ResetDirty()
 		GetLogger().Debug("SaveCache %v", cacheKeyName)
-		return
 	}
 }
 
@@ -129,7 +128,6 @@ func saveMapDirtyMark(kvCache KvCache, obj interface{}, cacheKeyName string, fie
 		}
 		dirtyMark.ResetDirty()
 		GetLogger().Debug("SaveCache %v", cacheKeyName)
-		return
 	}
 }
 

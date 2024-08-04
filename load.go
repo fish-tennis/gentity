@@ -72,30 +72,13 @@ func LoadObjData(obj any, sourceData interface{}) error {
 		}
 		return err
 	} else {
-		sourceTyp := reflect.TypeOf(sourceData)
-		// 如果是结构,先转换成map
-		if sourceTyp.Kind() == reflect.Ptr || sourceTyp.Kind() == reflect.Struct {
-			// mongodb中读出来是proto.Message格式,转换成map[string]interface{}
-			protoMessage, ok := sourceData.(proto.Message)
-			if ok {
-				sourceData = ConvertProtoToMap(protoMessage)
-			} else {
-				sourceData = ConvertObjectToMap(sourceData, false)
-			}
-			sourceTyp = reflect.TypeOf(sourceData)
-		}
-		if sourceTyp.Kind() != reflect.Map {
-			GetLogger().Error("unsupported type:%v", sourceTyp.Kind())
-			return ErrSourceDataType
-		}
 		sourceVal := reflect.ValueOf(sourceData)
-
 		objVal := reflect.ValueOf(obj)
 		if objVal.Kind() == reflect.Ptr {
 			objVal = objVal.Elem()
 		}
 		for childIndex, childStruct := range objStruct.Children {
-			sourceFieldVal := sourceVal.MapIndex(reflect.ValueOf(childStruct.Name))
+			sourceFieldVal := GetFieldValue(sourceVal, childStruct.Name)
 			if !sourceFieldVal.IsValid() {
 				GetLogger().Debug("sourceFieldVal not exists:%v", childStruct.Name)
 				continue
@@ -111,24 +94,6 @@ func LoadObjData(obj any, sourceData interface{}) error {
 				return childLoadErr
 			}
 		}
-		//for _, childStruct := range objStruct.Children {
-		//	sourceFieldVal := sourceVal.MapIndex(reflect.ValueOf(childStruct.Name))
-		//	if !sourceFieldVal.IsValid() {
-		//		GetLogger().Debug("saveable not exists:%v", childStruct.Name)
-		//		continue
-		//	}
-		//	fieldVal := objVal.Field(childStruct.FieldIndex)
-		//	if !childStruct.InitNilField(fieldVal) {
-		//		GetLogger().Error("child nil %v", childStruct.Name)
-		//		continue
-		//	}
-		//	fieldInterface := fieldVal.Interface()
-		//	childLoadErr := LoadData(fieldInterface, sourceFieldVal.Interface())
-		//	if childLoadErr != nil {
-		//		GetLogger().Error("child load error field:%v", childStruct.Name)
-		//		return childLoadErr
-		//	}
-		//}
 	}
 	return nil
 }
@@ -390,24 +355,6 @@ func loadField(obj any, sourceData any, fieldStruct *SaveableField) error {
 	if !fieldStruct.InitNilField(field) {
 		return errors.New("cant init nil field")
 	}
-	//// 明文保存的特殊结构体需要特殊处理,如MapData[K comparable, V any]
-	//if fieldStruct.IsPlain {
-	//	switch fieldStruct.StructField.Type.Kind() {
-	//	case reflect.Ptr:
-	//		if field.CanInterface() {
-	//			fieldInterface := field.Interface()
-	//			if _, ok := fieldInterface.(Saveable); ok {
-	//				return LoadData(fieldInterface, sourceData)
-	//			}
-	//		}
-	//	case reflect.Struct:
-	//		if fieldInterface := convertStructToInterface(field); fieldInterface != nil {
-	//			if _, ok := fieldInterface.(Saveable); ok {
-	//				return LoadData(fieldInterface, sourceData)
-	//			}
-	//		}
-	//	}
-	//}
 	switch fieldStruct.StructField.Type.Kind() {
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
 		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64,

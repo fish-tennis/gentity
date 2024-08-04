@@ -21,8 +21,6 @@ var (
 var _saveableStructsMap = newSaveableStructsMap()
 
 // 有需要保存字段的结构
-// TODO:改为树型结
-// 目前的设计有缺陷,当2个Component都保存同一个proto时,如果其中一个是明文,另一个不是明文,则有冲突
 // SaveableStruct应该只针对第一层的对象(如Component),并设计为树型结构,在第一次解析结构时,就把层次关系记录下来
 type SaveableStruct struct {
 	// 单个db字段
@@ -140,15 +138,6 @@ type SaveableField struct {
 	Depth int32
 }
 
-// TODO: 是否是叶子节点
-func (this *SaveableField) IsLeaf() {
-
-}
-
-// TODO: 获取一个对象的叶子节点的字段值
-func (this *SaveableField) GetLeafField(val reflect.Value) any {
-	return nil
-}
 
 // 如果字段为nil,根据类型进行初始化
 func (this *SaveableField) InitNilField(val reflect.Value) bool {

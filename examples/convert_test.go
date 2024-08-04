@@ -39,8 +39,17 @@ func TestConvert(t *testing.T) {
 			Exp:    12345,
 		},
 	}
-	m := gentity.ConvertProtoToMap(message)
-	t.Logf("%v", m)
+	m := map[string]any{
+		"BaseInfo": &pb.BaseInfo{
+			Gender: 3,
+			Level:  4,
+			Exp:    67890,
+		},
+	}
+	field := gentity.GetFieldValue(reflect.ValueOf(message), "BaseInfo")
+	t.Logf("%v", field.Interface())
+	field = gentity.GetFieldValue(reflect.ValueOf(m), "BaseInfo")
+	t.Logf("%v", field.Interface())
 }
 
 func TestSlice(t *testing.T) {

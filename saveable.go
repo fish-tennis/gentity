@@ -157,11 +157,3 @@ func (this *BaseMapDirtyMark) RangeDirtyMap(f func(dirtyKey interface{}, isAddOr
 		f(k, v)
 	}
 }
-
-func IsSaveable(obj interface{}) bool {
-	switch obj.(type) {
-	case DirtyMark, MapDirtyMark:
-		return true
-	}
-	return false
-}

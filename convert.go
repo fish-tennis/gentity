@@ -7,7 +7,6 @@ import (
 	"google.golang.org/protobuf/proto"
 	"reflect"
 	"strconv"
-	"strings"
 )
 
 // reflect.Value -> interface{}
@@ -125,64 +124,21 @@ func ConvertInterfaceToRealType(typ reflect.Type, v interface{}) interface{} {
 	return nil
 }
 
-// proto.Message -> map[string]interface{}
-func ConvertProtoToMap(protoMessage proto.Message) map[string]interface{} {
-	return ConvertObjectToMap(protoMessage, true)
+func GetFieldValue(obj reflect.Value, fieldName string) reflect.Value {
+	if obj.Kind() == reflect.Ptr {
+		obj = obj.Elem()
+	}
+	if obj.Kind() == reflect.Map {
+		return obj.MapIndex(reflect.ValueOf(fieldName))
+	} else if obj.Kind() == reflect.Struct {
+		return obj.FieldByName(fieldName)
+	} else {
+		GetLogger().Error("unsupported kind:%v", obj.Kind())
+	}
+	return reflect.Value{}
 }
 
-// object -> map[string]interface{}
-func ConvertObjectToMap(obj any, ignoreEmptyTag bool) map[string]interface{} {
-	stringMap := make(map[string]interface{})
-	typ := reflect.TypeOf(obj)
-	val := reflect.ValueOf(obj)
-	if typ.Kind() == reflect.Pointer {
-		typ = typ.Elem()
-		val = val.Elem()
-	}
-	for i := 0; i < typ.NumField(); i++ {
-		sf := typ.Field(i)
-		if ignoreEmptyTag && len(sf.Tag) == 0 {
-			continue
-		}
-		var v interface{}
-		fieldVal := val.Field(i)
-		switch fieldVal.Kind() {
-		case reflect.Slice:
-			if fieldVal.Type().Elem().Kind() == reflect.Uint8 {
-				v = fieldVal.Bytes()
-			} else {
-				v = fieldVal.Interface()
-			}
-		case reflect.Interface, reflect.Ptr, reflect.Map:
-			v = fieldVal.Interface()
-		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-			v = fieldVal.Interface()
-		case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-			v = fieldVal.Interface()
-		case reflect.Float32, reflect.Float64:
-			v = fieldVal.Interface()
-		case reflect.Complex64, reflect.Complex128:
-			v = fieldVal.Interface()
-		case reflect.String:
-			v = fieldVal.Interface()
-		case reflect.Bool:
-			v = fieldVal.Interface()
-		default:
-			GetLogger().Error("unsupported type:%v", fieldVal.Kind())
-		}
-		if v == nil {
-			GetLogger().Debug("%v %v nil", sf.Name, fieldVal.Kind())
-			continue
-		}
-		if _saveableStructsMap.useLowerName {
-			stringMap[strings.ToLower(sf.Name)] = v
-		} else {
-			stringMap[sf.Name] = v
-		}
-	}
-	return stringMap
-}
-
+// 支持int,float,string,[]byte,complex,bool,proto.Message
 func ConvertStringToRealType(typ reflect.Type, v string) interface{} {
 	switch typ.Kind() {
 	case reflect.Int:
