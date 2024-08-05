@@ -247,11 +247,11 @@ func convertValueToStringOrInterface(val reflect.Value) (interface{}, error) {
 				}
 				return bytes, nil
 			}
-			// Saveable格式
+			// 支持map[key]any的特殊动态结构
 			if valueSaveable, ok := i.(Saveable); ok {
 				valueSaveData, valueSaveErr := GetSaveData(valueSaveable, "")
 				if valueSaveErr != nil {
-					GetLogger().Error("convert Saveabl err:%v", valueSaveErr.Error())
+					GetLogger().Error("convert Saveable err:%v", valueSaveErr.Error())
 					return nil, valueSaveErr
 				}
 				return valueSaveData, nil

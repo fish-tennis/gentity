@@ -157,3 +157,30 @@ func (this *BaseMapDirtyMark) RangeDirtyMap(f func(dirtyKey interface{}, isAddOr
 		f(k, v)
 	}
 }
+
+// 用于InterfaceMap的map's value的DirtyMark
+type MapValueDirtyMark[K comparable] struct {
+	// 父类才是真正的脏标记
+	Parent MapDirtyMark
+	MapKey K // key of parent map
+}
+
+func NewMapValueDirtyMark[K comparable](parent MapDirtyMark, mapKey K) *MapValueDirtyMark[K] {
+	return &MapValueDirtyMark[K]{
+		Parent: parent,
+		MapKey: mapKey,
+	}
+}
+
+// 只是为了实现Saveable接口,无实际作用
+func (m *MapValueDirtyMark[K]) IsChanged() bool {
+	return false
+}
+
+// 只是为了实现Saveable接口,无实际作用
+func (m *MapValueDirtyMark[K]) ResetChanged() {
+}
+
+func (m *MapValueDirtyMark[K]) SetDirty() {
+	m.Parent.SetDirty(m.MapKey, true)
+}

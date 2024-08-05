@@ -10,10 +10,11 @@ import (
 	"reflect"
 )
 
-// map[k]interface{}类型的字段,无法直接反序列化,因为不知道map的value具体是什么类型
+// map[k]any类型的字段,无法直接反序列化,因为不知道map的value具体是什么类型
 //
-//	因此提供一个自定义加载接口,由业务层自行实现特殊的反序列化逻辑
-//	LoadFromCache处理map[k]interface{}时,会把数据转换成map[k][]byte,传入LoadFromBytesMap
+// 因此提供一个自定义加载接口,由业务层自行实现特殊的反序列化逻辑
+// LoadFromCache处理map[k]any时,会把数据转换成map[k][]byte,传入LoadFromBytesMap
+// 保存数据时,由于知道具体的value类型,所以无需特殊保存接口
 type InterfaceMapLoader interface {
 	// bytesMap: map[k][]byte
 	LoadFromBytesMap(bytesMap any) error
@@ -34,7 +35,7 @@ func LoadEntityData(entity Entity, entityData interface{}) error {
 		if util.IsValueNil(entityDataVal) {
 			return true
 		}
-		dataVal := entityDataVal.FieldByName(component.GetName())
+		dataVal := GetFieldValue(entityDataVal, component.GetName())
 		if util.IsValueNil(dataVal) {
 			return true
 		}

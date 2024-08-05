@@ -10,7 +10,7 @@ import (
 	"strings"
 )
 
-// 获取组件的保存数据
+// 获取组件的完整保存数据
 func GetComponentSaveData(component Component) (interface{}, error) {
 	return GetSaveData(component, GetComponentSaveName(component))
 }
@@ -34,13 +34,6 @@ func SaveObjectChangedDataToCache(kvCache KvCache, parentCacheKey string, obj an
 			GetLogger().Error("cache %v err", cacheKey)
 			return
 		}
-		//depth := 0
-		//fieldObj, _ := GetSingleSaveableField(obj, objStruct.Field, &depth)
-		//if fieldObj == nil {
-		//	GetLogger().Error("cache %v err depth:%v", cacheKey, depth)
-		//	return
-		//}
-		//GetLogger().Debug("GetSingleSaveableField %v fieldName:%v", cacheKey, objStruct.Field.Name)
 		SaveChangedDataToCache(kvCache, fieldObj, cacheKey, saveableField)
 	} else {
 		objVal := reflect.ValueOf(obj)
@@ -288,14 +281,6 @@ func saveObjectChangedDataToDbByKey(entityDb EntityDb, obj any, entityKey interf
 			GetLogger().Error("%v Save %v Err:obj not a saveable", entityKey, objStruct.Field.Name)
 			return
 		}
-		//depth := 0
-		//// 找到实际需要保存的字段(叶子节点)
-		//fieldObj, _ := GetSingleSaveableField(obj, objStruct.Field, &depth)
-		//if fieldObj == nil {
-		//	GetLogger().Error("%v %v.%v not find saveable field,depth:%v", entityKey, objName, objStruct.Field.Name, depth)
-		//	return
-		//}
-		//GetLogger().Debug("GetSingleSaveableField %v %v.%v depth:%v", entityKey, objName, objStruct.Field.Name, depth)
 		// 如果某个组件数据没改变过,就无需保存
 		if !saveable.IsChanged() {
 			GetLogger().Debug("%v ignore %v", entityKey, saveableField.Name)
@@ -347,42 +332,11 @@ func saveObjectChangedDataToDbByKey(entityDb EntityDb, obj any, entityKey interf
 			}
 			record.saved = append(record.saved, saveable)
 			GetLogger().Debug("SaveDb Child %v %v", entityKey, childName)
-			//childCacheName := parentCacheKey + "." + saveableField.Name
-			//saveObjectChangedDataToDbByKey(entityDb, saveable, entityKey, kvCache, removeCacheAfterSaveDb, saveableField.Name, childCacheName, record)
-
-			//childName := ""
-			//if _saveableStructsMap.useLowerName {
-			//	childName = objName + "." + strings.ToLower(childStruct.Name)
-			//} else {
-			//	childName = objName + "." + childStruct.Name
-			//}
-			//fieldVal := objVal.Field(childStruct.FieldIndex)
-			//if util.IsValueNil(fieldVal) {
-			//	record.changedData[childName] = nil
-			//	continue
-			//}
-			//var fieldInterface any
-			//if fieldVal.Kind() == reflect.Struct {
-			//	fieldInterface = convertStructToInterface(fieldVal)
-			//} else {
-			//	fieldInterface = fieldVal.Interface()
-			//}
-			//if fieldInterface == nil {
-			//	GetLogger().Error("save %v %v err", entityKey, childName)
-			//	continue
-			//}
-			//childCacheName := ""
-			//if _saveableStructsMap.useLowerName {
-			//	childCacheName = parentCacheKey + "." + strings.ToLower(childStruct.Name)
-			//} else {
-			//	childCacheName = parentCacheKey + "." + childStruct.Name
-			//}
-			//saveObjectChangedDataToDbByKey(entityDb, fieldInterface, entityKey, kvCache, removeCacheAfterSaveDb, childName, childCacheName, record)
 		}
 	}
 }
 
-// Entity的变化数据保存到数据库
+// Entity的变化数据保存到数据库,只保存有数据变化的组件数据,但组件的数据不会分割,只要一个组件有数据变化,组件的数据就是全量覆盖
 //
 //	指定key
 func SaveEntityChangedDataToDbByKey(entityDb EntityDb, entity Entity, entityKey interface{}, kvCache KvCache, removeCacheAfterSaveDb bool, cachePrefix string) error {
@@ -556,27 +510,17 @@ func convertStructToInterface(field reflect.Value) any {
 	return fieldAddr.Interface()
 }
 
-func convertStructToSaveable(field reflect.Value) Saveable {
-	if fieldInterface := convertStructToInterface(field); fieldInterface != nil {
-		if saveable, ok := fieldInterface.(Saveable); ok {
-			return saveable
-		}
-	}
-	return nil
-}
-
-func getInterfaceSaveData(fieldInterface interface{}, parentName string, fieldStruct *SaveableField) (interface{}, error) {
+func getInterfaceSaveData(fieldInterface any, parentName string, fieldStruct *SaveableField) (any, error) {
 	if protoMessage, ok := fieldInterface.(proto.Message); ok {
 		return proto.Marshal(protoMessage)
 	} else {
-		// Saveable
-		// TODO: 移除该支持 以简化代码
+		// 支持map[key]Saveable的特殊动态结构
 		return getSaveableSaveData(fieldInterface, parentName, fieldStruct)
 	}
 }
 
-func getSaveableSaveData(fieldInterface interface{}, parentName string, fieldStruct *SaveableField) (interface{}, error) {
-	// Saveable
+func getSaveableSaveData(fieldInterface any, parentName string, fieldStruct *SaveableField) (any, error) {
+	// 支持map[key]Saveable的特殊动态结构
 	if valueSaveable, ok := fieldInterface.(Saveable); ok {
 		valueSaveData, valueSaveErr := GetSaveData(valueSaveable, parentName)
 		if valueSaveErr != nil {
@@ -602,26 +546,7 @@ func getSaveDataOfSaveable(saveable Saveable, saveableField *SaveableField, pare
 	}
 	// 明文保存的数据
 	if saveableField.IsPlain {
-		//// 明文保存的特殊结构体需要特殊处理,如MapData[K comparable, V any]
-		//switch field.Kind() {
-		//case reflect.Ptr:
-		//	if field.CanInterface() {
-		//		fieldInterface := field.Interface()
-		//		if _, ok := fieldInterface.(Saveable); ok {
-		//			return getSaveableSaveData(fieldInterface, parentName, saveableField)
-		//		}
-		//	}
-		//case reflect.Struct:
-		//	if fieldInterface := convertStructToInterface(field); fieldInterface != nil {
-		//		if _, ok := fieldInterface.(Saveable); ok {
-		//			return getSaveableSaveData(fieldInterface, parentName, saveableField)
-		//		}
-		//	}
-		//}
 		fieldInterface := field.Interface()
-		//if _, ok := fieldInterface.(Saveable); ok {
-		//	return getSaveableSaveData(field.Interface(), parentName, saveableField)
-		//}
 		// 明文保存的普通数据,直接返回原始数据
 		return fieldInterface, nil
 	}
@@ -653,7 +578,7 @@ func getSaveDataOfSaveable(saveable Saveable, saveableField *SaveableField, pare
 	}
 }
 
-// 获取对象的保存数据
+// 获取对象的完整保存数据
 func GetSaveData(obj any, parentName string) (interface{}, error) {
 	objStruct := GetObjSaveableStruct(obj)
 	if objStruct == nil {
@@ -688,18 +613,6 @@ func GetSaveData(obj any, parentName string) (interface{}, error) {
 				return nil, err
 			}
 			compositeSaveData[childStruct.Name] = childSaveData
-
-			//val := objVal.Field(childStruct.FieldIndex)
-			//if util.IsValueNil(val) {
-			//	compositeSaveData[childStruct.Name] = nil
-			//	continue
-			//}
-			//fieldInterface := val.Interface()
-			//childSaveData, err := GetSaveData(fieldInterface, childName)
-			//if err != nil {
-			//	return nil, err
-			//}
-			//compositeSaveData[childStruct.Name] = childSaveData
 		}
 		return compositeSaveData, nil
 	}

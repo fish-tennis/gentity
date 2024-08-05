@@ -73,48 +73,54 @@ func (im *InterfaceMap) LoadFromBytesMap(bytesMap any) error {
 func (im *InterfaceMap) makeTestData() {
 	gentity.GetLogger().Info("makeTestData")
 	i1 := &item1{
+		MapValueDirtyMark: gentity.NewMapValueDirtyMark(im, "item1"),
 		Data: &pb.BaseInfo{
 			Level: 10086,
 			Exp:   168,
 		},
 	}
-	i1.SetDirty()
 	im.InterfaceMap["item1"] = i1
+	i1.SetDirty()
 
 	i2 := &item2{
+		MapValueDirtyMark: gentity.NewMapValueDirtyMark(im, "item2"),
 		Data: &pb.QuestData{
 			CfgId:    120,
 			Progress: 3,
 		},
 	}
-	i2.SetDirty()
 	im.InterfaceMap["item2"] = i2
+	i2.SetDirty()
 
 	i3 := &item3{
+		MapValueDirtyMark: gentity.NewMapValueDirtyMark(im, "item3"),
 		Data: &pb.BaseInfo{
 			Level: 3,
 			Exp:   3,
 		},
 	}
 	im.InterfaceMap["item3"] = i3
+	i3.SetDirty()
 }
 
+// InterfaceMap的子对象
 type item1 struct {
-	gentity.BaseDirtyMark
-	Data *pb.BaseInfo `db:"item1"`
+	*gentity.MapValueDirtyMark[string]
+	Data *pb.BaseInfo `db:""`
 }
 
 func (i1 *item1) addExp(exp int32) {
 	i1.Data.Exp += exp
-	i1.SetDirty()
 }
 
+// InterfaceMap的子对象
 type item2 struct {
-	gentity.BaseDirtyMark
-	Data *pb.QuestData `db:"item2"`
+	*gentity.MapValueDirtyMark[string]
+	Data *pb.QuestData `db:""`
 }
 
+// InterfaceMap的子对象
 type item3 struct {
-	gentity.BaseDirtyMark
-	Data *pb.BaseInfo `db:"item3"`
+	*gentity.MapValueDirtyMark[string]
+	Data *pb.BaseInfo `db:""`
 }
