@@ -590,7 +590,6 @@ func LoadFromCache(obj interface{}, kvCache KvCache, cacheKey string, parentObj 
 			GetLogger().Error("LoadFromCache %v err", cacheKey)
 			return false, ErrUnsupportedType
 		}
-		//GetLogger().Debug("GetSingleSaveableField %v depth:%v", cacheKey, depth)
 		return loadFieldFromCache(saveable, kvCache, cacheKey, saveableField, parentObj)
 	} else {
 		hasData := false

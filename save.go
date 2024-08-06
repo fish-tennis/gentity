@@ -125,7 +125,7 @@ func saveMapDirtyMark(kvCache KvCache, obj interface{}, cacheKeyName string, fie
 }
 
 // 把修改数据保存到缓存
-func SaveChangedDataToCache(kvCache KvCache, obj interface{}, cacheKeyName string, saveableField *SaveableField) {
+func SaveChangedDataToCache(kvCache KvCache, obj any, cacheKeyName string, saveableField *SaveableField) {
 	if saveableField == nil {
 		return
 	}
