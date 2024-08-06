@@ -62,6 +62,14 @@ func LoadObjData(obj any, sourceData interface{}) error {
 		return ErrNotSaveableStruct
 	}
 	if objStruct.IsSingleField() {
+		// InterfaceMap特殊处理
+		if objStruct.Field.IsInterfaceMap() {
+			// InterfaceMapLoader的特殊加载接口放在obj上(一般是组件上),而不是field上
+			if interfaceMapLoader, ok := obj.(InterfaceMapLoader); ok {
+				GetLogger().Debug("InterfaceMapLoader %v", objStruct.Field.Name)
+				return interfaceMapLoader.LoadFromBytesMap(sourceData)
+			}
+		}
 		saveable, saveableField := objStruct.GetSingleSaveable(obj)
 		if saveable == nil {
 			GetLogger().Error("LoadObjData %v Err:obj not a saveable", objStruct.Field.Name)
@@ -83,6 +91,18 @@ func LoadObjData(obj any, sourceData interface{}) error {
 			if !sourceFieldVal.IsValid() {
 				GetLogger().Debug("sourceFieldVal not exists:%v", childStruct.Name)
 				continue
+			}
+			// child InterfaceMap特殊处理
+			if childStruct.IsInterfaceMap() {
+				childObj := objVal.Field(childStruct.FieldIndex).Interface()
+				if interfaceMapLoader, ok := childObj.(InterfaceMapLoader); ok {
+					GetLogger().Debug("InterfaceMapLoader %v", childStruct.Name)
+					childLoadErr := interfaceMapLoader.LoadFromBytesMap(sourceData)
+					if childLoadErr != nil {
+						GetLogger().Error("LoadObjData error field:%v", childStruct.Name)
+						return childLoadErr
+					}
+				}
 			}
 			saveable, saveableField := objStruct.GetChildSaveable(obj, childIndex)
 			if saveable == nil {
@@ -382,13 +402,6 @@ func loadField(obj any, sourceData any, fieldStruct *SaveableField) error {
 		return loadFieldSlice(obj, field, sourceData, fieldStruct)
 
 	case reflect.Map:
-		if fieldStruct.IsInterfaceMap() {
-			// InterfaceMap特殊处理
-			if interfaceMapLoader, ok := obj.(InterfaceMapLoader); ok {
-				GetLogger().Debug("InterfaceMapLoader %v", fieldStruct.Name)
-				return interfaceMapLoader.LoadFromBytesMap(sourceData)
-			}
-		}
 		return loadFieldMap(obj, field, sourceData, fieldStruct)
 
 	case reflect.Struct:
@@ -434,7 +447,7 @@ func loadField(obj any, sourceData any, fieldStruct *SaveableField) error {
 //}
 
 // 从缓存加载字段
-func loadFieldFromCache(obj any, kvCache KvCache, cacheKey string, fieldStruct *SaveableField) (bool, error) {
+func loadFieldFromCache(obj any, kvCache KvCache, cacheKey string, fieldStruct *SaveableField, parentObj any) (bool, error) {
 	cacheType, err := kvCache.Type(cacheKey)
 	if err == redis.Nil || cacheType == "" || cacheType == "none" {
 		return false, nil
@@ -498,8 +511,10 @@ func loadFieldFromCache(obj any, kvCache KvCache, cacheKey string, fieldStruct *
 			bytesMap := fieldStruct.NewBytesMap()
 			err = kvCache.GetMap(cacheKey, bytesMap)
 			if err == nil {
-				if interfaceMapLoader, ok := obj.(InterfaceMapLoader); ok {
-					err = interfaceMapLoader.LoadFromBytesMap(bytesMap)
+				if parentObj != nil {
+					if interfaceMapLoader, ok := parentObj.(InterfaceMapLoader); ok {
+						err = interfaceMapLoader.LoadFromBytesMap(bytesMap)
+					}
 				}
 			}
 			if IsRedisError(err) {
@@ -564,7 +579,7 @@ func loadFieldFromCache(obj any, kvCache KvCache, cacheKey string, fieldStruct *
 //
 //	有缓存数据return true,否则return false
 //	解析缓存数据错误return error,否则return nil
-func LoadFromCache(obj interface{}, kvCache KvCache, cacheKey string) (bool, error) {
+func LoadFromCache(obj interface{}, kvCache KvCache, cacheKey string, parentObj any) (bool, error) {
 	objStruct := GetObjSaveableStruct(obj)
 	if objStruct == nil {
 		return false, ErrNotSaveableStruct
@@ -576,7 +591,7 @@ func LoadFromCache(obj interface{}, kvCache KvCache, cacheKey string) (bool, err
 			return false, ErrUnsupportedType
 		}
 		//GetLogger().Debug("GetSingleSaveableField %v depth:%v", cacheKey, depth)
-		return loadFieldFromCache(saveable, kvCache, cacheKey, saveableField)
+		return loadFieldFromCache(saveable, kvCache, cacheKey, saveableField, parentObj)
 	} else {
 		hasData := false
 		objVal := reflect.ValueOf(obj)
@@ -589,7 +604,7 @@ func LoadFromCache(obj interface{}, kvCache KvCache, cacheKey string) (bool, err
 				GetLogger().Error("nil %v", childStruct.Name)
 				return true, errors.New(fmt.Sprintf("%v nil", childStruct.Name))
 			}
-			hasCache, err := loadFieldFromCache(saveable, kvCache, cacheKey+"."+childStruct.Name, saveableField)
+			hasCache, err := loadFieldFromCache(saveable, kvCache, cacheKey+"."+childStruct.Name, saveableField, parentObj)
 			if !hasCache {
 				continue
 			}
@@ -619,7 +634,7 @@ func FixEntityDataFromCache(entity Entity, db EntityDb, kvCache KvCache, cacheKe
 				GetLogger().Error("%v FixEntityDataFromCache %v Err:obj not a saveable", entityKey, objStruct.Field.Name)
 				return true
 			}
-			hasCache, err := LoadFromCache(saveable, kvCache, cacheKey)
+			hasCache, err := LoadFromCache(saveable, kvCache, cacheKey, component)
 			if !hasCache {
 				return true
 			}
@@ -651,15 +666,12 @@ func FixEntityDataFromCache(entity Entity, db EntityDb, kvCache KvCache, cacheKe
 					GetLogger().Error("%v FixEntityDataFromCache %v.%v Err:field not a saveable", entityKey, component.GetName(), childStruct.Name)
 					return true
 				}
-
-				//fieldVal := objVal.Field(childStruct.FieldIndex)
-				//if !childStruct.InitNilField(fieldVal) {
-				//	GetLogger().Error("%v %v.%v nil", entity, component.GetName(), childStruct.Name)
-				//	return true
-				//}
-				//fieldInterface := fieldVal.Interface()
+				var parentObj any
+				if childStruct.IsInterfaceMap() {
+					parentObj = objVal.Field(childStruct.FieldIndex).Interface()
+				}
 				cacheKey := GetEntityComponentChildCacheKey(cacheKeyPrefix, entityKey, component.GetName(), childStruct.Name)
-				hasCache, err := LoadFromCache(saveable, kvCache, cacheKey)
+				hasCache, err := LoadFromCache(saveable, kvCache, cacheKey, parentObj)
 				if !hasCache {
 					return true
 				}

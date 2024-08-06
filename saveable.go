@@ -181,6 +181,7 @@ func (m *MapValueDirtyMark[K]) IsChanged() bool {
 func (m *MapValueDirtyMark[K]) ResetChanged() {
 }
 
+// 设置脏标记,实际设置的是父类
 func (m *MapValueDirtyMark[K]) SetDirty() {
 	m.Parent.SetDirty(m.MapKey, true)
 }

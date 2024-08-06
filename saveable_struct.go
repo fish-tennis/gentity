@@ -2,6 +2,7 @@ package gentity
 
 import (
 	"github.com/fish-tennis/gentity/util"
+	"google.golang.org/protobuf/proto"
 	"reflect"
 	"slices"
 	"strings"
@@ -136,8 +137,9 @@ type SaveableField struct {
 	Name string
 	// 节点深度
 	Depth int32
+	// 是否是map[key]any类型
+	isInterfaceMap bool
 }
-
 
 // 如果字段为nil,根据类型进行初始化
 func (this *SaveableField) InitNilField(val reflect.Value) bool {
@@ -162,19 +164,42 @@ func (this *SaveableField) InitNilField(val reflect.Value) bool {
 	return true
 }
 
+func (this *SaveableField) IsInterfaceMap() bool {
+	return this.isInterfaceMap
+}
+
 // 是否是map[k]any类型的map
 //
 //	这种类型的map,无法直接使用gentity.LoadData来加载数据,因为不知道map的value具体是什么类型
-func (this *SaveableField) IsInterfaceMap() bool {
+func (this *SaveableField) checkInterfaceMap() {
 	typ := this.StructField.Type
 	if typ.Kind() == reflect.Ptr {
 		typ = typ.Elem()
 	}
 	if typ.Kind() != reflect.Map {
-		return false
+		return
 	}
 	valueType := typ.Elem()
-	return valueType.Kind() == reflect.Interface
+	this.isInterfaceMap = valueType.Kind() == reflect.Interface
+	if this.isInterfaceMap {
+		GetLogger().Debug("%v.%v isInterfaceMap depth:%v", this.Name, this.StructField.Name, this.Depth)
+	}
+}
+
+// 获取最后一层的字段
+func (this *SaveableField) getLeafField() *SaveableField {
+	field := this
+	subStruct := this.SaveableStruct
+	// 限制子结构只能是单字段
+	for subStruct != nil && subStruct.Field != nil {
+		field = subStruct.Field
+		subStruct = field.SaveableStruct
+	}
+	return field
+}
+
+func (this *SaveableField) hasSubInterfaceMap() bool {
+	return this.getLeafField().isInterfaceMap
 }
 
 // map[k]any类型的字段,new一个map[k][]byte对象
@@ -264,145 +289,6 @@ func newSaveableStructsMap() *safeSaveableStructsMap {
 	}
 }
 
-//func GetSaveableStruct(reflectType reflect.Type) *SaveableStruct {
-//	return GetSaveableStructChild(reflectType, false)
-//}
-
-//func GetSaveableStructReadonly(reflectType reflect.Type) *SaveableStruct {
-//	if reflectType.Kind() == reflect.Ptr {
-//		reflectType = reflectType.Elem()
-//	}
-//	if reflectType.Kind() != reflect.Struct {
-//		return nil
-//	}
-//	if cacheStruct, ok := _saveableStructsMap.Get(reflectType); ok {
-//		return cacheStruct
-//	}
-//	return nil
-//}
-
-// 获取对象的结构描述
-// 如果缓存过,则直接从缓存中获取
-func GetSaveableStructChild(reflectType reflect.Type, defaultPlain bool) *SaveableStruct {
-	if reflectType.Kind() == reflect.Ptr {
-		reflectType = reflectType.Elem()
-	}
-	if reflectType.Kind() != reflect.Struct {
-		return nil
-	}
-	if cacheStruct, ok := _saveableStructsMap.Get(reflectType); ok {
-		return cacheStruct
-	}
-	newStruct := &SaveableStruct{}
-	// 检查db字段
-	for i := 0; i < reflectType.NumField(); i++ {
-		fieldStruct := reflectType.Field(i)
-		if len(fieldStruct.Tag) == 0 {
-			continue
-		}
-		isPlain := defaultPlain
-		dbSetting, ok := fieldStruct.Tag.Lookup(KeywordDb)
-		if !ok {
-			continue
-		}
-		// db字段只能有一个
-		if newStruct.Field != nil {
-			GetLogger().Error("%v.%v db field count error", reflectType.Name(), fieldStruct.Name)
-			continue
-		}
-		dbSettings := strings.Split(dbSetting, ";")
-		if slices.Contains(dbSettings, KeywordPlain) {
-			isPlain = true
-		}
-		// 保存db的字段必须导出
-		if ([]byte(fieldStruct.Name))[0] != ([]byte(strings.ToUpper(fieldStruct.Name)))[0] {
-			GetLogger().Error("%v.%v field must export(start with upper char)", reflectType.Name(), fieldStruct.Name)
-			continue
-		}
-		switch fieldStruct.Type.Kind() {
-		case reflect.Interface, reflect.Func, reflect.Chan, reflect.Uintptr, reflect.UnsafePointer:
-			GetLogger().Error("%v.%v db field unsupported type:%v", reflectType.Name(), fieldStruct.Name, fieldStruct.Type.Kind())
-			continue
-		}
-		name := fieldStruct.Name
-		if _saveableStructsMap.useLowerName {
-			name = strings.ToLower(fieldStruct.Name)
-		}
-		for _, n := range dbSettings {
-			if n != "" && n != KeywordPlain {
-				if _saveableStructsMap.useLowerName {
-					name = strings.ToLower(n)
-				} else {
-					name = n
-				}
-				break
-			}
-		}
-		fieldCache := &SaveableField{
-			StructField: fieldStruct,
-			FieldIndex:  i,
-			IsPlain:     isPlain,
-			Name:        name,
-		}
-		newStruct.Field = fieldCache
-		GetLogger().Info("db %v.%v plain:%v", reflectType.Name(), name, isPlain)
-	}
-	newStruct.Children = make([]*SaveableField, 0)
-	// 检查child字段
-	for i := 0; i < reflectType.NumField(); i++ {
-		fieldStruct := reflectType.Field(i)
-		if len(fieldStruct.Tag) == 0 {
-			continue
-		}
-		dbSetting, ok := fieldStruct.Tag.Lookup(KeywordChild)
-		if !ok {
-			continue
-		}
-		// db字段和child字段不共存
-		if newStruct.Field != nil {
-			GetLogger().Error("%v already have db field,%v cant work", reflectType.Name(), fieldStruct.Name)
-			continue
-		}
-		// 保存db的字段必须导出
-		if ([]byte(fieldStruct.Name))[0] != ([]byte(strings.ToUpper(fieldStruct.Name)))[0] {
-			GetLogger().Error("%v.%v field must export(start with upper char)", reflectType.Name(), fieldStruct.Name)
-			continue
-		}
-		name := fieldStruct.Name
-		if _saveableStructsMap.useLowerName {
-			name = strings.ToLower(fieldStruct.Name)
-		}
-		dbSettings := strings.Split(dbSetting, ";")
-		isChildPlain := slices.Contains(dbSettings, KeywordPlain)
-		for _, n := range dbSettings {
-			if n != "" && n != KeywordPlain {
-				if _saveableStructsMap.useLowerName {
-					name = strings.ToLower(n)
-				} else {
-					name = n
-				}
-				break
-			}
-		}
-		fieldCache := &SaveableField{
-			StructField: fieldStruct,
-			FieldIndex:  i,
-			Name:        name,
-			IsPlain:     isChildPlain,
-		}
-		newStruct.Children = append(newStruct.Children, fieldCache)
-		GetLogger().Info("child %v.%v plain:%v", reflectType.Name(), name, isChildPlain)
-		GetSaveableStructChild(fieldCache.StructField.Type, isChildPlain)
-	}
-	if newStruct.Field == nil && len(newStruct.Children) == 0 {
-		// 无保存数据的结构,设置nil,下次调用时,会直接返回nil
-		_saveableStructsMap.Set(reflectType, nil)
-		return nil
-	}
-	_saveableStructsMap.Set(reflectType, newStruct)
-	return newStruct
-}
-
 func isSupportedSaveableField(fieldStruct reflect.Type) bool {
 	switch fieldStruct.Kind() {
 	case reflect.Interface, reflect.Func, reflect.Chan, reflect.Uintptr, reflect.UnsafePointer:
@@ -484,6 +370,7 @@ func parseField(rootObj any, newStruct *SaveableStruct, fieldStruct reflect.Stru
 		Name:        name,
 		Depth:       depth,
 	}
+	fieldPtrTyp := fieldStruct.Type
 	fieldTyp := fieldStruct.Type
 	if fieldTyp.Kind() == reflect.Pointer {
 		fieldTyp = fieldTyp.Elem()
@@ -494,15 +381,26 @@ func parseField(rootObj any, newStruct *SaveableStruct, fieldStruct reflect.Stru
 		} else {
 			GetLogger().Debug("parseField %v.%v field:%v fieldType:%v depth:%v", getObjOrComponentName(rootObj), name, fieldStruct.Name, fieldTyp.String(), depth)
 		}
+		saveableField.checkInterfaceMap()
 		return saveableField
 	}
-	// TODO:如果fieldTyp是proto.Message,则直接返回
+	// 如果fieldTyp是proto.Message,则直接返回
+	if fieldPtrTyp.Implements(reflect.TypeOf((*proto.Message)(nil)).Elem()) {
+		if tagKeyword == KeywordDb {
+			GetLogger().Debug("parseField %v field:%v fieldType:%v depth:%v", getObjOrComponentName(rootObj), fieldStruct.Name, fieldTyp.String(), depth)
+		} else {
+			GetLogger().Debug("parseField %v.%v field:%v fieldType:%v depth:%v", getObjOrComponentName(rootObj), name, fieldStruct.Name, fieldTyp.String(), depth)
+		}
+		saveableField.checkInterfaceMap()
+		return saveableField
+	}
 	// 字段是struct,则继续解析下一层
 	subStruct := &SaveableStruct{
 		ParentField: parentField,
 	}
 	subStruct = parseStruct(rootObj, fieldTyp, subStruct, saveableField)
 	saveableField.SaveableStruct = subStruct
+	saveableField.checkInterfaceMap()
 	return saveableField
 }
 
@@ -555,19 +453,34 @@ func ParseEntitySaveableStruct(entity Entity) {
 	})
 }
 
+// 获取对象的保存结构(一般对组件使用),如果没有保存字段,则返回nil
 func GetObjSaveableStruct(obj any) *SaveableStruct {
-	componentTyp := reflect.TypeOf(obj)
-	if componentTyp.Kind() == reflect.Ptr {
-		componentTyp = componentTyp.Elem()
+	objTyp := reflect.TypeOf(obj)
+	if objTyp.Kind() == reflect.Ptr {
+		objTyp = objTyp.Elem()
 	}
-	if componentTyp.Kind() != reflect.Struct {
+	if objTyp.Kind() != reflect.Struct {
 		return nil
 	}
-	if cacheStruct, ok := _saveableStructsMap.Get(componentTyp); ok {
+	if cacheStruct, ok := _saveableStructsMap.Get(objTyp); ok {
 		return cacheStruct
 	}
-	componentStruct := &SaveableStruct{}
-	componentStruct = parseStruct(obj, componentTyp, componentStruct, nil)
-	_saveableStructsMap.Set(componentTyp, componentStruct)
-	return componentStruct
+	objStruct := &SaveableStruct{}
+	objStruct = parseStruct(obj, objTyp, objStruct, nil)
+	if objStruct != nil {
+		// 如果叶子节点是map[key]any,则把第一层field也标记为InterfaceMap
+		if objStruct.Field != nil {
+			if objStruct.Field.getLeafField().isInterfaceMap {
+				objStruct.Field.isInterfaceMap = true
+			}
+		} else {
+			for _, child := range objStruct.Children {
+				if child.getLeafField().isInterfaceMap {
+					child.isInterfaceMap = true
+				}
+			}
+		}
+	}
+	_saveableStructsMap.Set(objTyp, objStruct)
+	return objStruct
 }

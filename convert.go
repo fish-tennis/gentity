@@ -247,7 +247,7 @@ func convertValueToStringOrInterface(val reflect.Value) (interface{}, error) {
 				}
 				return bytes, nil
 			}
-			// 支持map[key]any的特殊动态结构
+			// 支持map[key]Saveable的特殊动态结构
 			if valueSaveable, ok := i.(Saveable); ok {
 				valueSaveData, valueSaveErr := GetSaveData(valueSaveable, "")
 				if valueSaveErr != nil {

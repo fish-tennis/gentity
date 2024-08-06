@@ -126,11 +126,11 @@ func TestDbCache(t *testing.T) {
 	player1.SaveCache(kvCache)
 
 	interfaceMap := player1.GetInterfaceMap()
-	if len(interfaceMap.InterfaceMap) == 0 {
+	if len(interfaceMap.InterfaceMap.Data) == 0 {
 		interfaceMap.makeTestData()
 	}
-	interfaceMap.InterfaceMap["item1"].(*item1).addExp(10)
-	interfaceMap.SetDirty("item1", true)
+	item1 := interfaceMap.InterfaceMap.Data["mapItem1"].(*mapItem1)
+	item1.addExp(10)
 	player1.SaveCache(kvCache)
 
 	array := player1.GetArray()
@@ -222,11 +222,11 @@ func TestFixDataFromCache(t *testing.T) {
 	player1.SaveCache(kvCache)
 
 	interfaceMap := player1.GetInterfaceMap()
-	if len(interfaceMap.InterfaceMap) == 0 {
+	if len(interfaceMap.InterfaceMap.Data) == 0 {
 		interfaceMap.makeTestData()
 	}
-	interfaceMap.InterfaceMap["item1"].(*item1).addExp(10)
-	interfaceMap.SetDirty("item1", true)
+	item1 := interfaceMap.InterfaceMap.Data["mapItem1"].(*mapItem1)
+	item1.addExp(10)
 	player1.SaveCache(kvCache)
 
 	array := player1.GetArray()
@@ -268,7 +268,7 @@ func TestFixDataFromCache(t *testing.T) {
 	t.Logf("Quest.Finished:%v", loadPlayer.GetQuest().Finished.Data)
 	t.Logf("Quest.Quests:%v", loadPlayer.GetQuest().Quests.Data)
 	t.Logf("InterfaceMap:%v", loadPlayer.GetInterfaceMap().InterfaceMap)
-	for k, v := range loadPlayer.GetInterfaceMap().InterfaceMap {
+	for k, v := range loadPlayer.GetInterfaceMap().InterfaceMap.Data {
 		t.Logf("%v:%v", k, v)
 	}
 	t.Logf("Array:%v", loadPlayer.GetArray().Array)
