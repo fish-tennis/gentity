@@ -12,18 +12,18 @@ import (
 //
 // example:
 //
-// go func() {
-//   defer timerEntries.Stop()
-//   timerEntries := NewTimerEntries()
-//   timerEntries.Start()
-//   for {
-//       select {
-//       case timeNow := <-timerEntries.TimerChan():
-//            timerEntries.Run(timeNow)
-//       case ...
-//       }
-//   }
-// }
+//	go func() {
+//	  defer timerEntries.Stop()
+//	  timerEntries := NewTimerEntries()
+//	  timerEntries.Start()
+//	  for {
+//	      select {
+//	      case timeNow := <-timerEntries.TimerChan():
+//	           timerEntries.Run(timeNow)
+//	      case ...
+//	      }
+//	  }
+//	}
 type TimerEntries struct {
 	entries []*timerEntry
 	Timer   *time.Timer
@@ -87,6 +87,7 @@ func (this *TimerEntries) After(d time.Duration, f TimerJob) {
 
 func (this *TimerEntries) addEntry(entry *timerEntry) {
 	this.entries = append(this.entries, entry)
+	this.sort()
 	if this.Timer == nil {
 		return
 	}
