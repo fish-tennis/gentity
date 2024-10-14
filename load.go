@@ -39,6 +39,10 @@ func LoadEntityData(entity Entity, entityData interface{}) error {
 		if util.IsValueNil(dataVal) {
 			return true
 		}
+		if !dataVal.IsValid() {
+			GetLogger().Error("ComponentName not match %v %v", entity.GetId(), component.GetName())
+			return true
+		}
 		if !dataVal.CanInterface() {
 			GetLogger().Error("LoadEntityData %v %v entityData's field CantInterface", entity.GetId(), component.GetName())
 			return false
