@@ -27,7 +27,7 @@ func (this *MongoKvDb) GetCollection() *mongo.Collection {
 
 func (this *MongoKvDb) Find(key interface{}) (interface{}, error) {
 	col := this.mongoDatabase.Collection(this.collectionName)
-	result := col.FindOne(context.Background(), bson.D{{this.keyName, key}})
+	result := col.FindOne(context.Background(), bson.D{{Key: this.keyName, Value: key}})
 	if result == nil || result.Err() == mongo.ErrNoDocuments {
 		return nil, nil
 	}
@@ -42,8 +42,8 @@ func (this *MongoKvDb) Find(key interface{}) (interface{}, error) {
 func (this *MongoKvDb) FindAndDecode(key interface{}, decodeData interface{}) error {
 	col := this.mongoDatabase.Collection(this.collectionName)
 	opts := options.FindOne().
-		SetProjection(bson.D{{this.valueName, 1}})
-	result := col.FindOne(context.Background(), bson.D{{this.keyName, key}}, opts)
+		SetProjection(bson.D{{Key: this.valueName, Value: 1}})
+	result := col.FindOne(context.Background(), bson.D{{Key: this.keyName, Value: key}}, opts)
 	if result == nil || result.Err() == mongo.ErrNoDocuments {
 		return nil
 	}
@@ -58,7 +58,7 @@ func (this *MongoKvDb) FindAndDecode(key interface{}, decodeData interface{}) er
 func (this *MongoKvDb) Insert(key interface{}, value interface{}) (err error, isDuplicateKey bool) {
 	col := this.mongoDatabase.Collection(this.collectionName)
 	_, err = col.InsertOne(context.Background(),
-		bson.D{{this.keyName, key}, {this.valueName, value}})
+		bson.D{{Key: this.keyName, Value: key}, {Key: this.valueName, Value: value}})
 	if err != nil {
 		isDuplicateKey = IsDuplicateKeyError(err)
 	}
@@ -69,8 +69,8 @@ func (this *MongoKvDb) Update(key interface{}, value interface{}, upsert bool) e
 	col := this.mongoDatabase.Collection(this.collectionName)
 	opt := options.Update().SetUpsert(upsert)
 	_, err := col.UpdateOne(context.Background(),
-		bson.D{{this.keyName, key}},
-		bson.D{{"$set", bson.D{{this.valueName, value}}}},
+		bson.D{{Key: this.keyName, Value: key}},
+		bson.D{{Key: "$set", Value: bson.D{{Key: this.valueName, Value: value}}}},
 		opt)
 	return err
 }
@@ -79,8 +79,8 @@ func (this *MongoKvDb) Inc(key interface{}, value interface{}, upsert bool) (int
 	col := this.mongoDatabase.Collection(this.collectionName)
 	opt := options.FindOneAndUpdate().SetUpsert(upsert).SetReturnDocument(options.After)
 	updateResult := col.FindOneAndUpdate(context.Background(),
-		bson.D{{this.keyName, key}},
-		bson.D{{"$inc", bson.D{{this.valueName, value}}}},
+		bson.D{{Key: this.keyName, Value: key}},
+		bson.D{{Key: "$inc", Value: bson.D{{Key: this.valueName, Value: value}}}},
 		opt)
 	if updateResult.Err() != nil {
 		return nil, updateResult.Err()
@@ -92,7 +92,7 @@ func (this *MongoKvDb) Inc(key interface{}, value interface{}, upsert bool) (int
 
 func (this *MongoKvDb) Delete(key interface{}) error {
 	col := this.mongoDatabase.Collection(this.collectionName)
-	_, err := col.DeleteOne(context.Background(), bson.D{{this.keyName, key}})
+	_, err := col.DeleteOne(context.Background(), bson.D{{Key: this.keyName, Value: key}})
 	return err
 }
 
@@ -104,8 +104,8 @@ func (this *MongoKvDb) Shard() error {
 		key.Value = "hashed"
 	}
 	err := this.mongoDatabase.Client().Database("admin").RunCommand(context.Background(), bson.D{
-		{"shardCollection", collectionFullName},
-		{"key", bson.D{key}},
+		{Key: "shardCollection", Value: collectionFullName},
+		{Key: "key", Value: bson.D{key}},
 	}).Err()
 	if err != nil {
 		GetLogger().Error("Shard %v err:%v", collectionFullName, err)

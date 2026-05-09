@@ -146,7 +146,7 @@ func TestSaveableStruct(t *testing.T) {
 			t.Logf("err:%v len:%v", err, len(bytes))
 			newData := pb.QuestData{}
 			err = proto.Unmarshal(bytes, &newData)
-			t.Logf("err:%v newData:%v", err, newData)
+			t.Logf("err:%v newData:%v", err, &newData)
 		}
 	}
 }

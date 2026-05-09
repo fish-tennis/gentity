@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"github.com/fish-tennis/gentity"
 	"github.com/fish-tennis/gentity/examples/pb"
-	"github.com/go-redis/redis/v8"
+	"github.com/redis/go-redis/v9"
 	"google.golang.org/protobuf/proto"
 	"testing"
 	"time"
@@ -19,7 +19,7 @@ var (
 	_redisUsername  = ""
 	_redisPassword  = ""
 	// 如果部署的是单机版redis,则需要修改为false
-	_isRedisCluster = true
+	_isRedisCluster = false
 )
 
 func initRedis() gentity.KvCache {

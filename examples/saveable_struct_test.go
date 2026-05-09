@@ -144,7 +144,7 @@ func TestSingleField(t *testing.T) {
 		t.Logf("load data from db")
 		entity.RangeComponent(func(component gentity.Component) bool {
 			dataVal := reflect.ValueOf(entityData).Elem().FieldByName(component.GetName())
-			if util.IsValueNil(dataVal) {
+			if !dataVal.IsValid() || util.IsValueNil(dataVal) {
 				return true
 			}
 			loadErr := gentity.LoadObjData(component, dataVal.Interface())
@@ -369,7 +369,7 @@ func TestMapField(t *testing.T) {
 	t.Logf("load data from db")
 	entity.RangeComponent(func(component gentity.Component) bool {
 		dataVal := reflect.ValueOf(entityData).Elem().FieldByName(component.GetName())
-		if util.IsValueNil(dataVal) {
+		if !dataVal.IsValid() || util.IsValueNil(dataVal) {
 			return true
 		}
 		loadErr := gentity.LoadObjData(component, dataVal.Interface())

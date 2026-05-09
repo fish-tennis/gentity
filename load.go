@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/fish-tennis/gentity/util"
-	"github.com/go-redis/redis/v8"
+	"github.com/redis/go-redis/v9"
 	"google.golang.org/protobuf/proto"
 	"reflect"
 )

@@ -37,7 +37,7 @@ func (this *MongoCollection) CreateIndex(key string, unique bool) {
 	col := this.mongoDatabase.Collection(this.collectionName)
 	indexModel := mongo.IndexModel{
 		Keys: bson.D{
-			{key, 1},
+			{Key: key, Value: 1},
 		},
 		Options: options.Index().SetUnique(unique),
 	}
@@ -57,8 +57,8 @@ func (this *MongoCollection) Shard() error {
 		key.Value = "hashed"
 	}
 	err := this.mongoClient.Database("admin").RunCommand(context.Background(), bson.D{
-		{"shardCollection", collectionFullName},
-		{"key", bson.D{key}},
+		{Key: "shardCollection", Value: collectionFullName},
+		{Key: "key", Value: bson.D{key}},
 	}).Err()
 	if err != nil {
 		GetLogger().Error("Shard %v err:%v", collectionFullName, err)
@@ -74,7 +74,7 @@ func (this *MongoCollection) FindEntityById(entityKey interface{}, data interfac
 		return false, ErrNoUniqueColumn
 	}
 	col := this.mongoDatabase.Collection(this.collectionName)
-	result := col.FindOne(context.Background(), bson.D{{this.uniqueId, entityKey}})
+	result := col.FindOne(context.Background(), bson.D{{Key: this.uniqueId, Value: entityKey}})
 	if result == nil || result.Err() == mongo.ErrNoDocuments {
 		return false, nil
 	}
@@ -96,20 +96,20 @@ func (this *MongoCollection) InsertEntity(entityKey interface{}, entityData inte
 
 func (this *MongoCollection) SaveEntity(entityKey interface{}, entityData interface{}) error {
 	col := this.mongoDatabase.Collection(this.collectionName)
-	_, err := col.UpdateOne(context.Background(), bson.D{{this.uniqueId, entityKey}}, entityData)
+	_, err := col.UpdateOne(context.Background(), bson.D{{Key: this.uniqueId, Value: entityKey}}, entityData)
 	return err
 }
 
 func (this *MongoCollection) DeleteEntity(entityKey interface{}) error {
 	col := this.mongoDatabase.Collection(this.collectionName)
-	_, err := col.DeleteOne(context.Background(), bson.D{{this.uniqueId, entityKey}})
+	_, err := col.DeleteOne(context.Background(), bson.D{{Key: this.uniqueId, Value: entityKey}})
 	return err
 }
 
 func (this *MongoCollection) SaveComponent(entityKey interface{}, componentName string, componentData interface{}) error {
 	col := this.mongoDatabase.Collection(this.collectionName)
-	_, updateErr := col.UpdateOne(context.Background(), bson.D{{this.uniqueId, entityKey}},
-		bson.D{{"$set", bson.D{{componentName, componentData}}}})
+	_, updateErr := col.UpdateOne(context.Background(), bson.D{{Key: this.uniqueId, Value: entityKey}},
+		bson.D{{Key: "$set", Value: bson.D{{Key: componentName, Value: componentData}}}})
 	if updateErr != nil {
 		return updateErr
 	}
@@ -121,8 +121,8 @@ func (this *MongoCollection) SaveComponents(entityKey interface{}, components ma
 		return nil
 	}
 	col := this.mongoDatabase.Collection(this.collectionName)
-	_, updateErr := col.UpdateMany(context.Background(), bson.D{{this.uniqueId, entityKey}},
-		bson.D{{"$set", components}})
+	_, updateErr := col.UpdateMany(context.Background(), bson.D{{Key: this.uniqueId, Value: entityKey}},
+		bson.D{{Key: "$set", Value: components}})
 	if updateErr != nil {
 		return updateErr
 	}
@@ -133,8 +133,8 @@ func (this *MongoCollection) SaveComponentField(entityKey interface{}, component
 	col := this.mongoDatabase.Collection(this.collectionName)
 	// NOTE:如果player.ComponentName == null
 	// 直接更新player.ComponentName.fieldName会报错: Cannot create field 'fieldName' in element
-	_, updateErr := col.UpdateOne(context.Background(), bson.D{{this.uniqueId, entityKey}},
-		bson.D{{"$set", bson.D{{componentName + "." + fieldName, fieldData}}}})
+	_, updateErr := col.UpdateOne(context.Background(), bson.D{{Key: this.uniqueId, Value: entityKey}},
+		bson.D{{Key: "$set", Value: bson.D{{Key: componentName + "." + fieldName, Value: fieldData}}}})
 	if updateErr != nil {
 		return updateErr
 	}
@@ -151,8 +151,8 @@ func (this *MongoCollection) DeleteComponentField(entityKey interface{}, compone
 	for _, name := range fieldName {
 		fieldNames = append(fieldNames, bson.E{Key: componentName + "." + name})
 	}
-	result, updateErr := col.UpdateOne(context.Background(), bson.D{{this.uniqueId, entityKey}},
-		bson.D{{"$unset", fieldNames}})
+	result, updateErr := col.UpdateOne(context.Background(), bson.D{{Key: this.uniqueId, Value: entityKey}},
+		bson.D{{Key: "$unset", Value: fieldNames}})
 	if updateErr != nil {
 		return updateErr
 	}
@@ -175,7 +175,7 @@ type MongoCollectionPlayer struct {
 // 适用于一个账号在一个区服只有一个玩家角色的游戏
 func (this *MongoCollectionPlayer) FindPlayerByAccountId(accountId int64, regionId int32, playerData interface{}) (bool, error) {
 	col := this.mongoDatabase.Collection(this.collectionName)
-	result := col.FindOne(context.Background(), bson.D{{this.colAccountId, accountId}, {this.colRegionId, regionId}})
+	result := col.FindOne(context.Background(), bson.D{{Key: this.colAccountId, Value: accountId}, {Key: this.colRegionId, Value: regionId}})
 	if result == nil || result.Err() == mongo.ErrNoDocuments {
 		return false, nil
 	}
@@ -189,8 +189,8 @@ func (this *MongoCollectionPlayer) FindPlayerByAccountId(accountId int64, region
 func (this *MongoCollectionPlayer) FindPlayerIdByAccountId(accountId int64, regionId int32) (int64, error) {
 	col := this.mongoDatabase.Collection(this.collectionName)
 	opts := options.FindOne().
-		SetProjection(bson.D{{this.uniqueId, 1}})
-	result := col.FindOne(context.Background(), bson.D{{this.colAccountId, accountId}, {this.colRegionId, regionId}}, opts)
+		SetProjection(bson.D{{Key: this.uniqueId, Value: 1}})
+	result := col.FindOne(context.Background(), bson.D{{Key: this.colAccountId, Value: accountId}, {Key: this.colRegionId, Value: regionId}}, opts)
 	if result == nil || result.Err() == mongo.ErrNoDocuments {
 		return 0, nil
 	}
@@ -208,8 +208,8 @@ func (this *MongoCollectionPlayer) FindPlayerIdByAccountId(accountId int64, regi
 func (this *MongoCollectionPlayer) FindPlayerIdsByAccountId(accountId int64, regionId int32) ([]int64, error) {
 	col := this.mongoDatabase.Collection(this.collectionName)
 	opts := options.Find().
-		SetProjection(bson.D{{this.uniqueId, 1}})
-	cursor, err := col.Find(context.Background(), bson.D{{this.colAccountId, accountId}, {this.colRegionId, regionId}}, opts)
+		SetProjection(bson.D{{Key: this.uniqueId, Value: 1}})
+	cursor, err := col.Find(context.Background(), bson.D{{Key: this.colAccountId, Value: accountId}, {Key: this.colRegionId, Value: regionId}}, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -240,8 +240,8 @@ func (this *MongoCollectionPlayer) FindPlayerIdsByAccountId(accountId int64, reg
 func (this *MongoCollectionPlayer) FindAccountIdByPlayerId(playerId int64) (int64, error) {
 	col := this.mongoDatabase.Collection(this.collectionName)
 	opts := options.FindOne().
-		SetProjection(bson.D{{this.colAccountId, 1}})
-	result := col.FindOne(context.Background(), bson.D{{this.uniqueId, playerId}}, opts)
+		SetProjection(bson.D{{Key: this.colAccountId, Value: 1}})
+	result := col.FindOne(context.Background(), bson.D{{Key: this.uniqueId, Value: playerId}}, opts)
 	if result == nil || result.Err() == mongo.ErrNoDocuments {
 		return 0, nil
 	}
@@ -335,12 +335,12 @@ func (this *MongoDb) GetKvDb(name string) KvDb {
 func (this *MongoDb) Connect() bool {
 	client, err := mongo.Connect(context.Background(), options.Client().ApplyURI(this.uri))
 	if err != nil {
-		GetLogger().Error(err.Error())
+		GetLogger().Error("%v", err)
 		return false
 	}
 	// Ping the primary
 	if err = client.Ping(context.Background(), readpref.Primary()); err != nil {
-		GetLogger().Error(err.Error())
+		GetLogger().Error("%v", err)
 		return false
 	}
 	this.mongoClient = client
@@ -369,7 +369,7 @@ func (this *MongoDb) Connect() bool {
 			mongoCollection.mongoDatabase = this.mongoDatabase
 			if mongoCollection.keyName != "" && mongoCollection.keyName != "_id" {
 				indexModel := mongo.IndexModel{
-					Keys:    bson.D{{mongoCollection.keyName, 1}},
+					Keys:    bson.D{{Key: mongoCollection.keyName, Value: 1}},
 					Options: options.Index().SetUnique(true),
 				}
 				col := this.mongoDatabase.Collection(mongoCollection.collectionName)
@@ -392,7 +392,7 @@ func (this *MongoDb) Disconnect() {
 		return
 	}
 	if err := this.mongoClient.Disconnect(context.Background()); err != nil {
-		GetLogger().Error(err.Error())
+		GetLogger().Error("%v", err)
 	}
 	GetLogger().Info("mongo Disconnected")
 }
@@ -409,7 +409,7 @@ func (this *MongoDb) GetMongoClient() *mongo.Client {
 func (this *MongoDb) ShardDatabase(dbName string) error {
 	adminDb := this.mongoClient.Database("admin")
 	err := adminDb.RunCommand(context.Background(), bson.D{
-		{"enableSharding", dbName},
+		{Key: "enableSharding", Value: dbName},
 	}).Err()
 	if err != nil {
 		// 单机部署的mongodb,会报错no such command: 'enableSharding'
@@ -436,8 +436,8 @@ func (this *MongoDb) ShardCollection(collectionFullName, keyName string, hashedS
 		key.Value = "hashed"
 	}
 	err := adminDb.RunCommand(context.Background(), bson.D{
-		{"shardCollection", collectionFullName},
-		{"key", bson.D{key}},
+		{Key: "shardCollection", Value: collectionFullName},
+		{Key: "key", Value: bson.D{key}},
 	}).Err()
 	if err != nil {
 		GetLogger().Error("ShardCollection %v err:%v", collectionFullName, err)
