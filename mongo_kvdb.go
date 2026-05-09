@@ -3,9 +3,9 @@ package gentity
 import (
 	"context"
 	"fmt"
-	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
+	"go.mongodb.org/mongo-driver/v2/bson"
+	"go.mongodb.org/mongo-driver/v2/mongo"
+	"go.mongodb.org/mongo-driver/v2/mongo/options"
 )
 
 // KvDb的mongo实现
@@ -47,7 +47,7 @@ func (this *MongoKvDb) FindAndDecode(key interface{}, decodeData interface{}) er
 	if result == nil || result.Err() == mongo.ErrNoDocuments {
 		return nil
 	}
-	raw, err := result.DecodeBytes()
+	raw, err := result.Raw()
 	if err != nil {
 		return err
 	}
@@ -67,7 +67,7 @@ func (this *MongoKvDb) Insert(key interface{}, value interface{}) (err error, is
 
 func (this *MongoKvDb) Update(key interface{}, value interface{}, upsert bool) error {
 	col := this.mongoDatabase.Collection(this.collectionName)
-	opt := options.Update().SetUpsert(upsert)
+	opt := options.UpdateOne().SetUpsert(upsert)
 	_, err := col.UpdateOne(context.Background(),
 		bson.D{{Key: this.keyName, Value: key}},
 		bson.D{{Key: "$set", Value: bson.D{{Key: this.valueName, Value: value}}}},

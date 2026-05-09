@@ -3,10 +3,10 @@ package gentity
 import (
 	"context"
 	"fmt"
-	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
-	"go.mongodb.org/mongo-driver/mongo/readpref"
+	"go.mongodb.org/mongo-driver/v2/bson"
+	"go.mongodb.org/mongo-driver/v2/mongo"
+	"go.mongodb.org/mongo-driver/v2/mongo/options"
+	"go.mongodb.org/mongo-driver/v2/mongo/readpref"
 )
 
 // https://github.com/uber-go/guide/blob/master/style.md#verify-interface-compliance
@@ -194,7 +194,7 @@ func (this *MongoCollectionPlayer) FindPlayerIdByAccountId(accountId int64, regi
 	if result == nil || result.Err() == mongo.ErrNoDocuments {
 		return 0, nil
 	}
-	res, err := result.DecodeBytes()
+	res, err := result.Raw()
 	if err != nil {
 		return 0, err
 	}
@@ -245,7 +245,7 @@ func (this *MongoCollectionPlayer) FindAccountIdByPlayerId(playerId int64) (int6
 	if result == nil || result.Err() == mongo.ErrNoDocuments {
 		return 0, nil
 	}
-	res, err := result.DecodeBytes()
+	res, err := result.Raw()
 	if err != nil {
 		return 0, err
 	}
@@ -333,7 +333,7 @@ func (this *MongoDb) GetKvDb(name string) KvDb {
 }
 
 func (this *MongoDb) Connect() bool {
-	client, err := mongo.Connect(context.Background(), options.Client().ApplyURI(this.uri))
+	client, err := mongo.Connect(options.Client().ApplyURI(this.uri))
 	if err != nil {
 		GetLogger().Error("%v", err)
 		return false
@@ -447,13 +447,5 @@ func (this *MongoDb) ShardCollection(collectionFullName, keyName string, hashedS
 
 // 检查是否是key重复错误
 func IsDuplicateKeyError(err error) bool {
-	switch e := err.(type) {
-	case mongo.WriteException:
-		for _, writeErr := range e.WriteErrors {
-			if writeErr.Code == 11000 {
-				return true
-			}
-		}
-	}
-	return false
+	return mongo.IsDuplicateKeyError(err)
 }
