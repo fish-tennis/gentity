@@ -61,6 +61,10 @@ func (this *DistributedEntityMgr) GetEntity(entityId int64) RoutineEntity {
 // 加载分布式实体
 // 加载成功后,开启独立协程
 func (this *DistributedEntityMgr) LoadEntity(entityId int64, entityData interface{}) RoutineEntity {
+	// 快速预检查(读锁),避免重复到数据库查询
+	if e := this.GetEntity(entityId); e != nil {
+		return e
+	}
 	// 到数据库加载数据
 	exist, err := this.entityDb.FindEntityById(entityId, entityData)
 	if err != nil {
@@ -76,19 +80,23 @@ func (this *DistributedEntityMgr) LoadEntity(entityId int64, entityData interfac
 		GetLogger().Debug("LoadEntity newEntity==nil entityId:%v", entityId)
 		return nil
 	}
+	// 先在写锁外获取分布式锁,避免持锁期间执行Redis网络IO导致其它实体操作被串行化阻塞
+	if !this.DistributeLock(entityId) {
+		return nil
+	}
+	// 加写锁,双重检查,避免并发加载同一个entityId
 	this.entityMapLock.Lock()
-	defer this.entityMapLock.Unlock()
-	if existGuild, ok := this.entityMap[entityId]; ok {
-		return existGuild
+	if existEntity, ok := this.entityMap[entityId]; ok {
+		this.entityMapLock.Unlock()
+		// 已经有其他协程加载成功了,释放刚才获取的锁
+		this.DistributeUnlock(entityId)
+		return existEntity
 	}
 	routineArgs := this.routineArgs
-	if !newEntity.RunProcessRoutine(newEntity, &RoutineEntityRoutineArgs{
+	// 分布式锁已经在上面获取,InitFunc不再调用DistributeLock
+	startOK := newEntity.RunProcessRoutine(newEntity, &RoutineEntityRoutineArgs{
 		InitFunc: func(routineEntity RoutineEntity) bool {
 			if routineArgs.InitFunc != nil && !routineArgs.InitFunc(routineEntity) {
-				return false
-			}
-			// 如果分布式锁Lock失败,则取消协程
-			if !this.DistributeLock(routineEntity.GetId()) {
 				return false
 			}
 			return true
@@ -100,16 +108,21 @@ func (this *DistributedEntityMgr) LoadEntity(entityId int64, entityData interfac
 			// 协程结束的时候,分布式锁UnLock
 			this.DistributeUnlock(routineEntity.GetId())
 			this.entityMapLock.Lock()
-			defer this.entityMapLock.Unlock()
 			delete(this.entityMap, routineEntity.GetId())
+			this.entityMapLock.Unlock()
 		},
 		ProcessMessageFunc:    routineArgs.ProcessMessageFunc,
 		AfterTimerExecuteFunc: routineArgs.AfterTimerExecuteFunc,
-	}) {
+	})
+	if !startOK {
+		// 协程启动失败,释放锁
+		this.entityMapLock.Unlock()
+		this.DistributeUnlock(entityId)
 		return nil
 	}
 	// 协程开启成功 才加入map
 	this.entityMap[entityId] = newEntity
+	this.entityMapLock.Unlock()
 	return newEntity
 }
 

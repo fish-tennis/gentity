@@ -100,16 +100,17 @@ func (this *EventHandlerMgr) Invoke(entity Entity, evt any) bool {
 	if len(handlers) == 0 {
 		return false
 	}
+	// 将reflect.ValueOf预计算到循环外,避免在循环内为每个回调重复构造reflect.Value
+	entityVal := reflect.ValueOf(entity)
+	evtVal := reflect.ValueOf(evt)
 	for _, handler := range handlers {
 		if handler.ComponentName != "" {
 			// 组件上的事件响应接口
 			component := entity.GetComponentByName(handler.ComponentName)
-			handler.Method.Func.Call([]reflect.Value{reflect.ValueOf(component),
-				reflect.ValueOf(evt)})
+			handler.Method.Func.Call([]reflect.Value{reflect.ValueOf(component), evtVal})
 		} else {
-			// Entitys上的事件响应接口
-			handler.Method.Func.Call([]reflect.Value{reflect.ValueOf(entity),
-				reflect.ValueOf(evt)})
+			// Entity上的事件响应接口
+			handler.Method.Func.Call([]reflect.Value{entityVal, evtVal})
 		}
 	}
 	return true

@@ -96,7 +96,9 @@ func ConvertInterfaceToRealType(typ reflect.Type, v interface{}) interface{} {
 			if protoMessage, ok2 := newProto.Interface().(proto.Message); ok2 {
 				protoErr := proto.Unmarshal(bytes, protoMessage)
 				if protoErr != nil {
-					return protoErr
+					// 反序列化失败不能把error对象当作业务值返回,否则会污染数据并导致后续类型断言失败
+					GetLogger().Error("ConvertInterfaceToRealType proto.Unmarshal err:%v type:%v", protoErr.Error(), typ.String())
+					return nil
 				}
 				return protoMessage
 			}
@@ -187,11 +189,15 @@ func ConvertStringToRealType(typ reflect.Type, v string) interface{} {
 		if protoMessage, ok := newProto.Interface().(proto.Message); ok {
 			protoErr := proto.Unmarshal([]byte(v), protoMessage)
 			if protoErr != nil {
-				GetLogger().Error("proto err:%v", protoErr.Error())
-				return protoErr
+				// 反序列化失败不能把error对象当作业务值返回,否则会污染数据并导致后续类型断言失败
+				GetLogger().Error("ConvertStringToRealType proto.Unmarshal err:%v", protoErr.Error())
+				return nil
 			}
 			return protoMessage
 		}
+	case reflect.Interface:
+		// 目标类型是interface{}(如map[k]any),原样返回string,由上层(如InterfaceMapLoader)决定如何解析
+		return v
 	default:
 		GetLogger().Error("unsupported type:%v", typ.Kind())
 	}
