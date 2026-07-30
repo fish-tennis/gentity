@@ -214,6 +214,8 @@ func convertValueToString(val reflect.Value) (string, error) {
 		return strconv.FormatFloat(val.Float(), 'f', 2, 64), nil
 	case reflect.Complex64, reflect.Complex128:
 		return strconv.FormatComplex(val.Complex(), 'f', 2, 128), nil
+	case reflect.Bool:
+		return strconv.FormatBool(val.Bool()), nil
 	case reflect.String:
 		return val.String(), nil
 	case reflect.Interface:
