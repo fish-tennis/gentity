@@ -295,6 +295,16 @@ func loadFieldSlice(obj any, field reflect.Value, data any, fieldStruct *Saveabl
 	}
 }
 
+// map字段的加载采用合并语义,而非整体替换
+//
+// 仅遍历sourceData中的key进行新增/覆盖,data中不存在的key不会被删除。
+// 调用方需注意以下场景:
+//   - 从DB全量加载时通常无影响(DB返回的是完整数据)
+//   - 从缓存增量恢复(FixEntityDataFromCache)时,如果某个key在缓存中已被删除,
+//     但目标map中仍有该key,则不会被清理
+//   - 复用已有对象重新加载时,旧key会残留
+//
+// 如需整体替换语义,应在调用前自行清空目标map(field.Set(reflect.MakeMap(field.Type())))
 func loadFieldMap(obj any, field reflect.Value, data any, fieldStruct *SaveableField) error {
 	dataTyp := reflect.TypeOf(data)
 	if dataTyp.Kind() != reflect.Map {
