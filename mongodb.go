@@ -194,15 +194,12 @@ func (this *MongoCollectionPlayer) FindPlayerIdByAccountId(accountId int64, regi
 	if result == nil || result.Err() == mongo.ErrNoDocuments {
 		return 0, nil
 	}
-	res, err := result.Raw()
-	if err != nil {
+	// 解码到bson.M后用类型断言取值,兼容int32/int64/double等多种bson数值类型
+	var data bson.M
+	if err := result.Decode(&data); err != nil {
 		return 0, err
 	}
-	idValue, err := res.LookupErr(this.uniqueId)
-	if err != nil {
-		return 0, err
-	}
-	return idValue.Int64(), nil
+	return toInt64(data[this.uniqueId]), nil
 }
 
 func (this *MongoCollectionPlayer) FindPlayerIdsByAccountId(accountId int64, regionId int32) ([]int64, error) {
@@ -245,15 +242,12 @@ func (this *MongoCollectionPlayer) FindAccountIdByPlayerId(playerId int64) (int6
 	if result == nil || result.Err() == mongo.ErrNoDocuments {
 		return 0, nil
 	}
-	res, err := result.Raw()
-	if err != nil {
+	// 解码到bson.M后用类型断言取值,兼容int32/int64/double等多种bson数值类型
+	var data bson.M
+	if err := result.Decode(&data); err != nil {
 		return 0, err
 	}
-	idValue, err := res.LookupErr(this.colAccountId)
-	if err != nil {
-		return 0, err
-	}
-	return idValue.Int64(), nil
+	return toInt64(data[this.colAccountId]), nil
 }
 
 var _ DbMgr = (*MongoDb)(nil)
@@ -448,4 +442,29 @@ func (this *MongoDb) ShardCollection(collectionFullName, keyName string, hashedS
 // 检查是否是key重复错误
 func IsDuplicateKeyError(err error) bool {
 	return mongo.IsDuplicateKeyError(err)
+}
+
+// 把bson解码后的整数值统一转成int64
+// bson中数值可能是int32/int64/double等,直接调用Int64()会在类型不匹配时报错;
+// 解码到bson.M后用类型断言统一处理,更加健壮
+func toInt64(v any) int64 {
+	switch id := v.(type) {
+	case int64:
+		return id
+	case uint64:
+		return int64(id)
+	case int:
+		return int64(id)
+	case uint:
+		return int64(id)
+	case int32:
+		return int64(id)
+	case uint32:
+		return int64(id)
+	case float64:
+		return int64(id)
+	case float32:
+		return int64(id)
+	}
+	return 0
 }

@@ -171,11 +171,7 @@ func GetEntityCacheKey(prefix string, entityId interface{}) string {
 	// 使用{entityId}形式的hashtag,使同一个实体的不同组件的数据都落在一个redis节点上
 	// 落在一个redis节点上的好处:可以使用redis function对数据进行类似事务的原子操作
 	// https://redis.io/topics/cluster-tutorial
-	if _saveableStructsMap.useLowerName {
-		return fmt.Sprintf("%v.{%v}", prefix, util.ToStringWithoutError(entityId))
-	} else {
-		return fmt.Sprintf("%v.{%v}", prefix, util.ToStringWithoutError(entityId))
-	}
+	return prefix + ".{" + util.ToStringWithoutError(entityId) + "}"
 }
 
 // 获取对象组件的缓存key
@@ -184,19 +180,17 @@ func GetEntityComponentCacheKey(prefix string, entityId interface{}, componentNa
 	// 落在一个redis节点上的好处:可以使用redis function对数据进行类似事务的原子操作
 	// https://redis.io/topics/cluster-tutorial
 	if _saveableStructsMap.useLowerName {
-		return fmt.Sprintf("%v.{%v}.%v", prefix, util.ToStringWithoutError(entityId), strings.ToLower(componentName))
-	} else {
-		return fmt.Sprintf("%v.{%v}.%v", prefix, util.ToStringWithoutError(entityId), componentName)
+		return prefix + ".{" + util.ToStringWithoutError(entityId) + "}." + strings.ToLower(componentName)
 	}
+	return prefix + ".{" + util.ToStringWithoutError(entityId) + "}." + componentName
 }
 
 // 获取对象组件子对象的缓存key
 func GetEntityComponentChildCacheKey(prefix string, entityId interface{}, componentName string, childName string) string {
 	if _saveableStructsMap.useLowerName {
-		return fmt.Sprintf("%v.{%v}.%v.%v", prefix, util.ToStringWithoutError(entityId), strings.ToLower(componentName), childName)
-	} else {
-		return fmt.Sprintf("%v.{%v}.%v.%v", prefix, util.ToStringWithoutError(entityId), componentName, childName)
+		return prefix + ".{" + util.ToStringWithoutError(entityId) + "}." + strings.ToLower(componentName) + "." + childName
 	}
+	return prefix + ".{" + util.ToStringWithoutError(entityId) + "}." + componentName + "." + childName
 }
 
 func GetChildCacheKey(parentName, childName string) string {
