@@ -4,10 +4,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
+
 	"github.com/fish-tennis/gentity/util"
 	"github.com/redis/go-redis/v9"
 	"google.golang.org/protobuf/proto"
-	"reflect"
 )
 
 // map[k]any类型的字段,无法直接反序列化,因为不知道map的value具体是什么类型
@@ -101,22 +102,22 @@ func LoadObjData(obj any, sourceData interface{}) error {
 				childObj := objVal.Field(childStruct.FieldIndex).Interface()
 				if interfaceMapLoader, ok := childObj.(InterfaceMapLoader); ok {
 					GetLogger().Debug("InterfaceMapLoader %v", childStruct.Name)
-					childLoadErr := interfaceMapLoader.LoadFromBytesMap(sourceData)
+					childLoadErr := interfaceMapLoader.LoadFromBytesMap(sourceFieldVal.Interface())
 					if childLoadErr != nil {
 						GetLogger().Error("LoadObjData error field:%v", childStruct.Name)
-						return childLoadErr
+						continue
 					}
 				}
 			}
 			saveable, saveableField := objStruct.GetChildSaveable(obj, childIndex)
 			if saveable == nil {
 				GetLogger().Error("LoadObjData %v Err:field not a saveable", childStruct.Name)
-				return ErrNotSaveable
+				continue
 			}
 			childLoadErr := loadField(saveable, sourceFieldVal.Interface(), saveableField)
 			if childLoadErr != nil {
 				GetLogger().Error("LoadObjData error field:%v", saveableField.Name)
-				return childLoadErr
+				continue
 			}
 		}
 	}
@@ -260,6 +261,12 @@ func loadFieldSlice(obj any, field reflect.Value, data any, fieldStruct *Saveabl
 				// fieldElemType需要是一个具体的proto类型
 				// dataItemType可能是proto.Message或者是[]byte
 				dataItemInterface := ConvertValueToInterface(dataItemType, fieldElemType, dataItem)
+				// ConvertValueToInterface可能返回nil(如类型不支持或反序列化失败),
+				// reflect.Append传入nil的reflect.Value会panic,因此需要跳过
+				if dataItemInterface == nil {
+					GetLogger().Error("loadFieldSlice skip nil item, index:%v fieldName:%v", i, fieldStruct.Name)
+					continue
+				}
 				// append
 				field.Set(reflect.Append(field, reflect.ValueOf(dataItemInterface)))
 				GetLogger().Debug("%v append, fieldElemType:%v dataItemType:%v", fieldStruct.Name, fieldElemType, dataItemType)
@@ -320,6 +327,12 @@ func loadFieldMap(obj any, field reflect.Value, data any, fieldStruct *SaveableF
 	for sourceIt.Next() {
 		k := ConvertValueToInterface(dataKeyType, keyType, sourceIt.Key())
 		v := ConvertValueToInterface(dataValType, valType, sourceIt.Value())
+		// ConvertValueToInterface可能返回nil(如类型不支持或反序列化失败)
+		// SetMapIndex传入nil Value会静默删除条目而非设置,因此需要跳过
+		if k == nil || v == nil {
+			GetLogger().Error("loadFieldMap skip nil entry, key:%v fieldName:%v", k, fieldStruct.Name)
+			continue
+		}
 		field.SetMapIndex(reflect.ValueOf(k), reflect.ValueOf(v))
 	}
 	return nil
@@ -676,8 +689,8 @@ func FixEntityDataFromCache(entity Entity, db EntityDb, kvCache KvCache, cacheKe
 			for childIndex, childStruct := range objStruct.Children {
 				saveable, saveableField := objStruct.GetChildSaveable(component, childIndex)
 				if saveable == nil {
-					GetLogger().Error("%v FixEntityDataFromCache %v.%v Err:field not a saveable", entityKey, component.GetName(), childStruct.Name)
-					return true
+					GetLogger().Info("%v FixEntityDataFromCache %v.%v:field not a saveable", entityKey, component.GetName(), childStruct.Name)
+					continue
 				}
 				var parentObj any
 				if childStruct.IsInterfaceMap() {
@@ -686,23 +699,24 @@ func FixEntityDataFromCache(entity Entity, db EntityDb, kvCache KvCache, cacheKe
 				cacheKey := GetEntityComponentChildCacheKey(cacheKeyPrefix, entityKey, component.GetName(), childStruct.Name)
 				hasCache, err := LoadFromCache(saveable, kvCache, cacheKey, parentObj)
 				if !hasCache {
-					return true
+					GetLogger().Info("%v FixEntityDataFromCache %v.%v:field not hasCache", entityKey, component.GetName(), childStruct.Name)
+					continue
 				}
 				if err != nil {
 					GetLogger().Error("LoadFromCache %v error:%v", cacheKey, err.Error())
-					return true
+					continue
 				}
 				//GetLogger().Debug("%v", fieldInterface)
 				saveData, err := getSaveDataOfSaveable(saveable, saveableField, GetComponentSaveName(component))
 				if err != nil {
 					GetLogger().Error("%v Save %v.%v err %v", entityKey, component.GetName(), childStruct.Name, err.Error())
-					return true
+					continue
 				}
 				//GetLogger().Debug("%v", saveData)
 				saveDbErr := db.SaveComponentField(entityKey, GetComponentSaveName(component), childStruct.Name, saveData)
 				if saveDbErr != nil {
-					GetLogger().Error("%v SaveDb %v.%v err %v", entityKey, GetComponentSaveName(component), childStruct.Name, saveDbErr.Error())
-					return true
+					GetLogger().Error("%v SaveDb %v.%v err %v", entityKey, component.GetName(), childStruct.Name, saveDbErr.Error())
+					continue
 				}
 				GetLogger().Info("%v -> %v.%v", cacheKey, GetComponentSaveName(component), childStruct.Name)
 				kvCache.Del(cacheKey)

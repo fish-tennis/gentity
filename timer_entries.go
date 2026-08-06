@@ -33,6 +33,10 @@ type TimerEntries struct {
 	minInterval time.Duration
 	// 时间偏差
 	timeOffset time.Duration
+	// Run是否正在执行
+	// Run期间,addEntry只追加不sort/resetTime,避免遍历中的entries被重排导致跳过到期timer;
+	// Run结束后统一sort+resetTime
+	running bool
 }
 
 func NewTimerEntries() *TimerEntries {
@@ -87,6 +91,11 @@ func (this *TimerEntries) After(d time.Duration, f TimerJob) {
 
 func (this *TimerEntries) addEntry(entry *timerEntry) {
 	this.entries = append(this.entries, entry)
+	// Run期间只追加,不sort/resetTime,避免遍历中的entries被重排导致跳过到期timer
+	// Run结束后会统一sort+resetTime
+	if this.running {
+		return
+	}
 	this.sort()
 	if this.Timer == nil {
 		return
@@ -147,6 +156,8 @@ func (this *TimerEntries) Run(now time.Time) bool {
 	removed := false
 	modified := false
 	jobRun := false
+	// 标记Run正在执行,期间addEntry只追加不sort/resetTime
+	this.running = true
 	entryCount := len(this.entries)
 	for i := 0; i < entryCount; i++ {
 		entry := this.entries[i]
@@ -165,6 +176,7 @@ func (this *TimerEntries) Run(now time.Time) bool {
 		}
 		modified = true
 	}
+	this.running = false
 	if removed {
 		// 删除过期的timer
 		for i := len(this.entries) - 1; i >= 0; i-- {
@@ -175,6 +187,11 @@ func (this *TimerEntries) Run(now time.Time) bool {
 	}
 	// 重新排序,重置timer
 	if modified {
+		this.sort()
+		this.resetTime(now)
+	} else if len(this.entries) > entryCount {
+		// Run期间有新entry被追加且没有modified(本轮没有任何job执行),
+		// 也需要sort+resetTime以纳入新entry
 		this.sort()
 		this.resetTime(now)
 	}
