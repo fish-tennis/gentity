@@ -3,6 +3,7 @@ package examples
 import (
 	"github.com/fish-tennis/gentity"
 	"github.com/fish-tennis/gentity/examples/pb"
+	"log/slog"
 )
 
 const (
@@ -60,11 +61,11 @@ func (im *InterfaceMap) LoadFromBytesMap(bytesMap any) error {
 			val := ctor()
 			err := gentity.LoadObjData(val, v)
 			if err != nil {
-				gentity.GetLogger().Error("loadDataErr %v %v", k, err.Error())
+				slog.Error("loadDataErr", "key", k, "err", err)
 				continue
 			}
 			im.InterfaceMap.Set(k, val.(gentity.Saveable))
-			gentity.GetLogger().Info("loadData %v %v", k, val)
+			slog.Info("loadData", "key", k, "value", val)
 		}
 	}
 	if len(im.InterfaceMap.Data) == 0 {
@@ -74,7 +75,7 @@ func (im *InterfaceMap) LoadFromBytesMap(bytesMap any) error {
 }
 
 func (im *InterfaceMap) makeTestData() {
-	gentity.GetLogger().Info("makeTestData")
+	slog.Info("makeTestData")
 	i1 := &mapItem1{
 		MapValueDirtyMark: gentity.NewMapValueDirtyMark(im, "mapItem1"),
 		Data: &pb.BaseInfo{

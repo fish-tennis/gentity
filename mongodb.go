@@ -43,9 +43,9 @@ func (this *MongoCollection) CreateIndex(key string, unique bool) {
 	}
 	indexName, indexErr := col.Indexes().CreateOne(context.Background(), indexModel)
 	if indexErr != nil {
-		GetLogger().Error("%v create index %v err:%v", this.collectionName, indexName, indexErr)
+		glog.Error("create index", "collection", this.collectionName, "index", indexName, "err", indexErr)
 	} else {
-		GetLogger().Info("%v index:%v", this.collectionName, indexName)
+		glog.Info("index", "collection", this.collectionName, "indexName", indexName)
 	}
 }
 
@@ -61,9 +61,9 @@ func (this *MongoCollection) Shard() error {
 		{Key: "key", Value: bson.D{key}},
 	}).Err()
 	if err != nil {
-		GetLogger().Error("Shard %v err:%v", collectionFullName, err)
+		glog.Error("Shard", "collection", collectionFullName, "err", err)
 	} else {
-		GetLogger().Info("Shard %v hashed:%v", collectionFullName, this.hashedShardKey)
+		glog.Info("Shard", "collection", collectionFullName, "hashed", this.hashedShardKey)
 	}
 	return err
 }
@@ -156,7 +156,7 @@ func (this *MongoCollection) DeleteComponentField(entityKey interface{}, compone
 	if updateErr != nil {
 		return updateErr
 	}
-	GetLogger().Debug("%v", result)
+	//glog.Debug("DeleteComponentField", "result", result)
 	return nil
 }
 
@@ -283,7 +283,7 @@ func (this *MongoDb) RegisterEntityDb(collectionName string, hashedShardKey bool
 		uniqueId:       uniqueId,
 	}
 	this.entityDbs[collectionName] = col
-	GetLogger().Info("RegisterEntityDb %v %v", collectionName, uniqueId)
+	glog.Info("RegisterEntityDb", "collection", collectionName, "uniqueId", uniqueId)
 	return col
 }
 
@@ -301,7 +301,7 @@ func (this *MongoDb) RegisterPlayerDb(collectionName string, hashedShardKey bool
 		colRegionId:  region,
 	}
 	this.entityDbs[collectionName] = col
-	GetLogger().Info("RegisterPlayerDb %v %v", collectionName, playerId)
+	glog.Info("RegisterPlayerDb", "collection", collectionName, "playerId", playerId)
 	return col
 }
 
@@ -314,7 +314,7 @@ func (this *MongoDb) RegisterKvDb(collectionName string, hashedShardKey bool, ke
 		valueName:      valueName,
 	}
 	this.kvDbs[collectionName] = col
-	GetLogger().Info("RegisterKvDb %v %v %v", collectionName, keyName, valueName)
+	glog.Info("RegisterKvDb", "collection", collectionName, "key", keyName, "value", valueName)
 	return col
 }
 
@@ -329,12 +329,12 @@ func (this *MongoDb) GetKvDb(name string) KvDb {
 func (this *MongoDb) Connect() bool {
 	client, err := mongo.Connect(options.Client().ApplyURI(this.uri))
 	if err != nil {
-		GetLogger().Error("%v", err)
+		glog.Error("ConnectError", "err", err)
 		return false
 	}
 	// Ping the primary
 	if err = client.Ping(context.Background(), readpref.Primary()); err != nil {
-		GetLogger().Error("%v", err)
+		glog.Error("PingError", "err", err)
 		return false
 	}
 	this.mongoClient = client
@@ -369,15 +369,15 @@ func (this *MongoDb) Connect() bool {
 				col := this.mongoDatabase.Collection(mongoCollection.collectionName)
 				indexName, indexErr := col.Indexes().CreateOne(context.Background(), indexModel)
 				if indexErr != nil {
-					GetLogger().Error("%v create index %v err:%v", mongoCollection.collectionName, indexName, indexErr)
+					glog.Error("create index", "collection", mongoCollection.collectionName, "index", indexName, "err", indexErr)
 				} else {
-					GetLogger().Info("%v index:%v", mongoCollection.collectionName, indexName)
+					glog.Info("index", "collection", mongoCollection.collectionName, "indexName", indexName)
 				}
 			}
 		}
 	}
 
-	GetLogger().Info("mongo Connected")
+	glog.Info("mongo Connected")
 	return true
 }
 
@@ -386,9 +386,9 @@ func (this *MongoDb) Disconnect() {
 		return
 	}
 	if err := this.mongoClient.Disconnect(context.Background()); err != nil {
-		GetLogger().Error("%v", err)
+		glog.Error("DisconnectError", "err", err)
 	}
-	GetLogger().Info("mongo Disconnected")
+	glog.Info("mongo Disconnected")
 }
 
 func (this *MongoDb) GetMongoDatabase() *mongo.Database {
@@ -434,7 +434,7 @@ func (this *MongoDb) ShardCollection(collectionFullName, keyName string, hashedS
 		{Key: "key", Value: bson.D{key}},
 	}).Err()
 	if err != nil {
-		GetLogger().Error("ShardCollection %v err:%v", collectionFullName, err)
+		glog.Error("ShardCollectionError", "collection", collectionFullName, "err", err)
 	}
 	return err
 }

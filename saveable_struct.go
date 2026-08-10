@@ -1,6 +1,7 @@
 package gentity
 
 import (
+
 	"github.com/fish-tennis/gentity/util"
 	"google.golang.org/protobuf/proto"
 	"reflect"
@@ -62,7 +63,7 @@ func (this *SaveableStruct) GetSingleSaveable(obj any) (Saveable, *SaveableField
 				return saveable, this.Field
 			}
 		}
-		GetLogger().Error("GetSingleSaveable obj not Saveable:%v", reflect.TypeOf(obj).String())
+		glog.Error("GetSingleSaveable obj not Saveable", "type", reflect.TypeOf(obj).String())
 		return nil, nil
 	}
 	objVal := reflect.ValueOf(obj)
@@ -72,7 +73,7 @@ func (this *SaveableStruct) GetSingleSaveable(obj any) (Saveable, *SaveableField
 	fieldVal := objVal.Field(this.Field.FieldIndex)
 	// TODO: load时,initNilField
 	if !fieldVal.CanInterface() {
-		GetLogger().Error("GetSingleSaveable field CantInterface:%v", this.Field.Name)
+		glog.Error("GetSingleSaveable field CantInterface", "field", this.Field.Name)
 		return nil, nil
 	}
 	var fieldInterface any
@@ -82,7 +83,7 @@ func (this *SaveableStruct) GetSingleSaveable(obj any) (Saveable, *SaveableField
 		fieldInterface = fieldVal.Interface()
 	}
 	if fieldInterface == nil {
-		GetLogger().Error("GetSingleSaveable field nil :%v", this.Field.Name)
+		glog.Error("GetSingleSaveable field nil", "field", this.Field.Name)
 		return nil, nil
 	}
 	// 查找下一层
@@ -101,7 +102,7 @@ func (this *SaveableStruct) GetChildSaveable(obj any, childIndex int) (Saveable,
 	fieldVal := objVal.Field(saveableField.FieldIndex)
 	// TODO: load时,initNilField
 	if !fieldVal.CanInterface() {
-		GetLogger().Error("GetChildSaveable field CantInterface:%v", saveableField.Name)
+		glog.Error("GetChildSaveable field CantInterface", "field", saveableField.Name)
 		return nil, nil
 	}
 	var fieldInterface any
@@ -111,14 +112,14 @@ func (this *SaveableStruct) GetChildSaveable(obj any, childIndex int) (Saveable,
 		fieldInterface = fieldVal.Interface()
 	}
 	if fieldInterface == nil {
-		GetLogger().Error("GetChildSaveable field nil :%v", saveableField.Name)
+		glog.Error("GetChildSaveable field nil", "field", saveableField.Name)
 		return nil, nil
 	}
 	if saveableField.SaveableStruct == nil {
 		if saveable, ok := fieldInterface.(Saveable); ok {
 			return saveable, saveableField
 		}
-		GetLogger().Error("GetChildSaveable field not Saveable:%v", reflect.TypeOf(fieldInterface).String())
+		glog.Error("GetChildSaveable field not Saveable", "type", reflect.TypeOf(fieldInterface).String())
 		return nil, nil
 	}
 	// 查找下一层
@@ -145,17 +146,17 @@ type SaveableField struct {
 func (this *SaveableField) InitNilField(val reflect.Value) bool {
 	if util.IsValueNil(val) {
 		if !val.CanSet() {
-			GetLogger().Error("%v CanSet false", this.Name)
+			glog.Error("CanSet false", "field", this.Name)
 			return false
 		}
 		if this.StructField.Type.Kind() == reflect.Slice {
 			newElem := reflect.MakeSlice(this.StructField.Type, 0, 0)
 			val.Set(newElem)
-			GetLogger().Debug("%v MakeSlice", this.Name)
+			glog.Debug("MakeSlice", "field", this.Name)
 		} else if this.StructField.Type.Kind() == reflect.Map {
 			newElem := reflect.MakeMap(this.StructField.Type)
 			val.Set(newElem)
-			GetLogger().Debug("%v MakeMap", this.Name)
+			glog.Debug("MakeMap", "field", this.Name)
 		} else {
 			newElem := reflect.New(this.StructField.Type)
 			val.Set(newElem)
@@ -182,7 +183,7 @@ func (this *SaveableField) checkInterfaceMap() {
 	valueType := typ.Elem()
 	this.isInterfaceMap = valueType.Kind() == reflect.Interface
 	if this.isInterfaceMap {
-		GetLogger().Debug("%v.%v isInterfaceMap depth:%v", this.Name, this.StructField.Name, this.Depth)
+		glog.Debug("isInterfaceMap", "field", this.Name, "subField", this.StructField.Name, "depth", this.Depth)
 	}
 }
 
@@ -205,7 +206,7 @@ func (this *SaveableField) hasSubInterfaceMap() bool {
 // map[k]any类型的字段,new一个map[k][]byte对象
 func (this *SaveableField) NewBytesMap() any {
 	if !this.IsInterfaceMap() {
-		GetLogger().Error("%v not a interface map", this.Name)
+		glog.Error("not a interface map", "field", this.Name)
 		return nil
 	}
 	keyType := this.StructField.Type.Key()
@@ -241,7 +242,7 @@ func (this *SaveableField) NewBytesMap() any {
 	case reflect.String:
 		return make(map[string][]byte)
 	default:
-		GetLogger().Error("%v unsupported key type:%v", this.Name, keyType.Kind())
+		glog.Error("unsupported key type", "field", this.Name, "keyType", keyType.Kind())
 		return nil
 	}
 }
@@ -263,13 +264,13 @@ func (s *safeSaveableStructsMap) Set(key reflect.Type, value *SaveableStruct) {
 			key = key.Elem()
 		}
 		if len(value.Children) == 0 {
-			GetLogger().Info("SaveableStruct: %v.%v plain:%v", key.Name(), value.Field.StructField.Name, value.Field.IsPlain)
+			glog.Info("SaveableStruct", "struct", key.Name(), "field", value.Field.StructField.Name, "plain", value.Field.IsPlain)
 		} else {
 			var children []string
 			for _, child := range value.Children {
 				children = append(children, child.Name)
 			}
-			GetLogger().Info("SaveableStruct: %v children:%v", key.Name(), children)
+			glog.Info("SaveableStruct", "struct", key.Name(), "children", children)
 		}
 	}
 }
@@ -310,19 +311,19 @@ func parseField(rootObj any, newStruct *SaveableStruct, fieldStruct reflect.Stru
 	// db字段只能有一个
 	if newStruct.Field != nil {
 		if tagKeyword == KeywordDb {
-			GetLogger().Error("%v %v db field count error", getObjOrComponentName(rootObj), fieldStruct.Name)
+			glog.Error("db field count error", "obj", getObjOrComponentName(rootObj), "field", fieldStruct.Name)
 		} else {
-			GetLogger().Error("%v already have db field,%v cant work", getObjOrComponentName(rootObj), fieldStruct.Name)
+			glog.Error("already have db field", "obj", getObjOrComponentName(rootObj), "field", fieldStruct.Name)
 		}
 		return nil
 	}
 	// 保存db的字段必须导出
 	if ([]byte(fieldStruct.Name))[0] != ([]byte(strings.ToUpper(fieldStruct.Name)))[0] {
-		GetLogger().Error("%v %v field must export(start with upper char)", getObjOrComponentName(rootObj), fieldStruct.Name)
+		glog.Error("field must export(start with upper char)", "obj", getObjOrComponentName(rootObj), "field", fieldStruct.Name)
 		return nil
 	}
 	if !isSupportedSaveableField(fieldStruct.Type) {
-		GetLogger().Error("%v %v db field unsupported type:%v", getObjOrComponentName(rootObj), fieldStruct.Name, fieldStruct.Type.Kind())
+		glog.Error("db field unsupported type", "obj", getObjOrComponentName(rootObj), "field", fieldStruct.Name, "kind", fieldStruct.Type.Kind())
 		return nil
 	}
 	isPlain := false
@@ -377,9 +378,9 @@ func parseField(rootObj any, newStruct *SaveableStruct, fieldStruct reflect.Stru
 	}
 	if fieldTyp.Kind() != reflect.Struct {
 		if tagKeyword == KeywordDb {
-			GetLogger().Debug("parseField %v field:%v fieldType:%v depth:%v", getObjOrComponentName(rootObj), fieldStruct.Name, fieldTyp.String(), depth)
+			glog.Debug("parseField", "obj", getObjOrComponentName(rootObj), "field", fieldStruct.Name, "fieldType", fieldTyp.String(), "depth", depth)
 		} else {
-			GetLogger().Debug("parseField %v.%v field:%v fieldType:%v depth:%v", getObjOrComponentName(rootObj), name, fieldStruct.Name, fieldTyp.String(), depth)
+			glog.Debug("parseField", "obj", getObjOrComponentName(rootObj), "name", name, "field", fieldStruct.Name, "fieldType", fieldTyp.String(), "depth", depth)
 		}
 		saveableField.checkInterfaceMap()
 		return saveableField
@@ -387,9 +388,9 @@ func parseField(rootObj any, newStruct *SaveableStruct, fieldStruct reflect.Stru
 	// 如果fieldTyp是proto.Message,则直接返回
 	if fieldPtrTyp.Implements(reflect.TypeOf((*proto.Message)(nil)).Elem()) {
 		if tagKeyword == KeywordDb {
-			GetLogger().Debug("parseField %v field:%v fieldType:%v depth:%v", getObjOrComponentName(rootObj), fieldStruct.Name, fieldTyp.String(), depth)
+			glog.Debug("parseField", "obj", getObjOrComponentName(rootObj), "field", fieldStruct.Name, "fieldType", fieldTyp.String(), "depth", depth)
 		} else {
-			GetLogger().Debug("parseField %v.%v field:%v fieldType:%v depth:%v", getObjOrComponentName(rootObj), name, fieldStruct.Name, fieldTyp.String(), depth)
+			glog.Debug("parseField", "obj", getObjOrComponentName(rootObj), "name", name, "field", fieldStruct.Name, "fieldType", fieldTyp.String(), "depth", depth)
 		}
 		saveableField.checkInterfaceMap()
 		return saveableField
@@ -421,7 +422,7 @@ func parseStruct(rootObj any, structTyp reflect.Type, newStruct *SaveableStruct,
 		}
 		newStruct.Field = saveableField
 		if parentField == nil {
-			GetLogger().Debug("db %v.%v plain:%v", getObjOrComponentName(rootObj), saveableField.StructField.Name, saveableField.IsPlain)
+			glog.Debug("db", "obj", getObjOrComponentName(rootObj), "field", saveableField.StructField.Name, "plain", saveableField.IsPlain)
 		}
 	}
 	// child关键字只能用在第1层字段
@@ -437,7 +438,7 @@ func parseStruct(rootObj any, structTyp reflect.Type, newStruct *SaveableStruct,
 				continue
 			}
 			newStruct.Children = append(newStruct.Children, saveableField)
-			GetLogger().Debug("child %v.%v plain:%v", structTyp.Name(), saveableField.Name, saveableField.IsPlain)
+			glog.Debug("child", "struct", structTyp.Name(), "field", saveableField.Name, "plain", saveableField.IsPlain)
 		}
 	}
 	if newStruct.Field == nil && len(newStruct.Children) == 0 {

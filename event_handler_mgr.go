@@ -76,7 +76,7 @@ func (this *EventHandlerMgr) scanMethods(obj any, methodNamePrefix string) {
 			EventType:     eventType,
 		}
 		this.AddHandlerInfo(eventHandlerInfo)
-		GetLogger().Info("ScanEventHandler %v.%v event:%v", componentStructName, method.Name, eventType.String())
+		glog.Info("ScanEventHandler", "component", componentStructName, "method", method.Name, "event", eventType.String())
 	}
 }
 

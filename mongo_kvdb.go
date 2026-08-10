@@ -108,9 +108,9 @@ func (this *MongoKvDb) Shard() error {
 		{Key: "key", Value: bson.D{key}},
 	}).Err()
 	if err != nil {
-		GetLogger().Error("Shard %v err:%v", collectionFullName, err)
+		glog.Error("Shard", "collection", collectionFullName, "err", err)
 	} else {
-		GetLogger().Info("Shard %v hashed:%v", collectionFullName, this.hashedShardKey)
+		glog.Info("Shard", "collection", collectionFullName, "hashed", this.hashedShardKey)
 	}
 	return err
 }

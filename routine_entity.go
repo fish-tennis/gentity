@@ -2,6 +2,7 @@ package gentity
 
 import (
 	"context"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -86,10 +87,10 @@ func (this *BaseRoutineEntity) IsStopped() bool {
 // 跨协程场景建议优先使用 TryPushMessage 或 PushMessageTimeout。
 func (this *BaseRoutineEntity) PushMessage(message any) {
 	if this.stopped.Load() {
-		GetLogger().Warn("PushMessage dropped, entity stopped: %v", this.GetId())
+		glog.Warn("PushMessage dropped, entity stopped", "entityId", this.GetId())
 		return
 	}
-	GetLogger().Debug("PushMessage %v", message)
+	glog.Debug("PushMessage", "message", message)
 	this.messages <- message
 }
 
@@ -98,15 +99,15 @@ func (this *BaseRoutineEntity) PushMessage(message any) {
 // 适用于跨协程调用场景,调用方需自行处理入队失败(丢弃/重试/记日志等)
 func (this *BaseRoutineEntity) TryPushMessage(message any) bool {
 	if this.stopped.Load() {
-		GetLogger().Warn("TryPushMessage dropped, entity stopped: %v", this.GetId())
+		glog.Warn("TryPushMessage dropped, entity stopped", "entityId", this.GetId())
 		return false
 	}
 	select {
 	case this.messages <- message:
-		GetLogger().Debug("TryPushMessage %v", message)
+		glog.Debug("TryPushMessage", "message", message)
 		return true
 	default:
-		GetLogger().Warn("TryPushMessage failed, channel full: %v", message)
+		glog.Warn("TryPushMessage failed, channel full", "message", message)
 		return false
 	}
 }
@@ -116,17 +117,17 @@ func (this *BaseRoutineEntity) TryPushMessage(message any) bool {
 // 适用于跨协程调用场景,避免因实体协程卡住导致调用方永久阻塞
 func (this *BaseRoutineEntity) PushMessageTimeout(message any, timeout time.Duration) bool {
 	if this.stopped.Load() {
-		GetLogger().Warn("PushMessageTimeout dropped, entity stopped: %v", this.GetId())
+		glog.Warn("PushMessageTimeout dropped, entity stopped", "entityId", this.GetId())
 		return false
 	}
 	timer := time.NewTimer(timeout)
 	defer timer.Stop()
 	select {
 	case this.messages <- message:
-		GetLogger().Debug("PushMessageTimeout %v", message)
+		glog.Debug("PushMessageTimeout", "message", message)
 		return true
 	case <-timer.C:
-		GetLogger().Warn("PushMessageTimeout failed, timeout: %v", message)
+		glog.Warn("PushMessageTimeout failed, timeout", "message", message)
 		return false
 	}
 }
@@ -134,7 +135,7 @@ func (this *BaseRoutineEntity) PushMessageTimeout(message any, timeout time.Dura
 // 开启消息处理协程
 // 每个RoutineEntity一个独立的消息处理协程
 func (this *BaseRoutineEntity) RunProcessRoutine(routineEntity RoutineEntity, routineArgs *RoutineEntityRoutineArgs) bool {
-	GetLogger().Debug("RunProcessRoutine %v", this.GetId())
+	glog.Debug("RunProcessRoutine", "entityId", this.GetId())
 	if routineArgs.InitFunc != nil {
 		if !routineArgs.InitFunc(routineEntity) {
 			return false
@@ -146,8 +147,9 @@ func (this *BaseRoutineEntity) RunProcessRoutine(routineEntity RoutineEntity, ro
 		// 同时 WaitGroup.Done 用独立 defer 保证一定执行,避免清理逻辑 panic 导致 WaitGroup 永久泄漏
 		defer func() {
 			if err := recover(); err != nil {
-				GetLogger().Error("recover:%v", err)
-				LogStack()
+				glog.Error("RunProcessRoutine panic", "err", err)
+				stackBuf := make([]byte, 1<<12)
+				glog.Error(string(stackBuf[:runtime.Stack(stackBuf, false)]))
 			}
 			// Done 独立 defer,即使下面的清理逻辑 panic 也会执行,防止 WaitGroup 死锁
 			defer GetApplication().GetWaitGroup().Done()
@@ -155,8 +157,9 @@ func (this *BaseRoutineEntity) RunProcessRoutine(routineEntity RoutineEntity, ro
 			func() {
 				defer func() {
 					if err := recover(); err != nil {
-						GetLogger().Error("cleanup recover:%v", err)
-						LogStack()
+						glog.Error("RunProcessRoutine cleanup panic", "err", err)
+						stackBuf := make([]byte, 1<<12)
+						glog.Error(string(stackBuf[:runtime.Stack(stackBuf, false)]))
 					}
 				}()
 				this.timerEntries.Stop()
@@ -167,7 +170,7 @@ func (this *BaseRoutineEntity) RunProcessRoutine(routineEntity RoutineEntity, ro
 			}()
 			// 标记协程已停止,拒绝后续消息
 			this.stopped.Store(true)
-			GetLogger().Debug("EndProcessRoutine %v", this.GetId())
+			glog.Debug("EndProcessRoutine", "entityId", this.GetId())
 		}()
 
 		if this.timerEntries == nil {
@@ -177,10 +180,10 @@ func (this *BaseRoutineEntity) RunProcessRoutine(routineEntity RoutineEntity, ro
 		for {
 			select {
 			case <-ctx.Done():
-				GetLogger().Info("exitNotify %v", this.GetId())
+				glog.Info("exitNotify", "entityId", this.GetId())
 				goto END
 			case <-this.stopChan:
-				GetLogger().Debug("stop %v", this.GetId())
+				glog.Debug("stop", "entityId", this.GetId())
 				goto END
 			case routineMessage := <-this.messages:
 				// nil消息 表示这是需要处理的最后一条消息

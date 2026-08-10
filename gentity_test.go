@@ -2,6 +2,7 @@ package gentity
 
 import (
 	"context"
+	"log/slog"
 	"reflect"
 	"sync"
 	"testing"
@@ -185,20 +186,20 @@ type testApp struct {
 	ctx context.Context
 }
 
-func (a *testApp) GetId() int32                          { return a.id }
-func (a *testApp) GetContext() context.Context           { return a.ctx }
-func (a *testApp) GetWaitGroup() *sync.WaitGroup         { return a.wg }
-func (a *testApp) Init(context.Context, string) bool     { return true }
-func (a *testApp) Run(context.Context)                   {}
-func (a *testApp) OnUpdate(context.Context, int64)       {}
-func (a *testApp) Exit()                                 {}
+func (a *testApp) GetId() int32                      { return a.id }
+func (a *testApp) GetContext() context.Context       { return a.ctx }
+func (a *testApp) GetWaitGroup() *sync.WaitGroup     { return a.wg }
+func (a *testApp) Init(context.Context, string) bool { return true }
+func (a *testApp) Run(context.Context)               {}
+func (a *testApp) OnUpdate(context.Context, int64)   {}
+func (a *testApp) Exit()                             {}
 
 // ==================== Convert 测试 ====================
 
 // 测试 ConvertInterfaceToRealType proto反序列化失败时返回nil而非error对象
 func TestConvertInterfaceToRealType_ProtoUnmarshalFail(t *testing.T) {
-	SetLogLevel(-1) // 静默错误日志
-	type pbMessage struct{} // 不实现 proto.Message,用真实 proto 测试更准
+	slog.SetLogLoggerLevel(slog.LevelError + 1) // 静默错误日志
+	type pbMessage struct{}                     // 不实现 proto.Message,用真实 proto 测试更准
 	// 用无效bytes反序列化,确保失败
 	type fakeProto struct{}
 	// 使用实际的 proto.Message 类型: pb.QuestData
@@ -224,7 +225,7 @@ func TestConvertStringToRealType_Interface(t *testing.T) {
 
 // 测试 ConvertStringToRealType proto反序列化失败返回nil
 func TestConvertStringToRealType_ProtoUnmarshalFail(t *testing.T) {
-	SetLogLevel(-1)
+	slog.SetLogLoggerLevel(slog.LevelError + 1)
 	// 构造一个实现了 proto.Message 的 Ptr 类型
 	// 用 google.golang.org/protobuf 的空消息测试
 	// 这里直接用一个无效字符串,Ptr分支 Unmarshal 必然失败

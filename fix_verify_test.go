@@ -1,6 +1,7 @@
 package gentity
 
 import (
+	"log/slog"
 	"reflect"
 	"testing"
 	"time"
@@ -19,7 +20,7 @@ type testMultiChildComponent struct {
 
 // TestLoadObjData_MultiChild_ContinueWhenError 验证多child加载时,某个child出错不会跳过后续child
 func TestLoadObjData_MultiChild_ContinueWhenError(t *testing.T) {
-	SetLogLevel(-1) // 静默错误日志
+	slog.SetLogLoggerLevel(slog.LevelError + 1) // 静默错误日志
 
 	// 构造一个多child组件,其中Child1的数据故意设为错误类型
 	comp := &testMultiChildComponent{
@@ -54,7 +55,7 @@ func TestLoadObjData_MultiChild_ContinueWhenError(t *testing.T) {
 
 // TestLoadObjData_MultiChild_MissingField 验证缺少某个child数据时,后续child仍正常
 func TestLoadObjData_MultiChild_MissingField(t *testing.T) {
-	SetLogLevel(-1)
+	slog.SetLogLoggerLevel(slog.LevelError + 1)
 
 	comp := &testMultiChildComponent{
 		BaseComponent: NewBaseComponent(nil, "TestMultiChild2"),
@@ -103,7 +104,7 @@ func (l *testInterfaceMapLoader) LoadFromBytesMap(bytesMap any) error {
 
 // TestLoadObjData_InterfaceMapChild_CorrectParam 验证InterfaceMap child收到的是自身数据而非整个sourceData
 func TestLoadObjData_InterfaceMapChild_CorrectParam(t *testing.T) {
-	SetLogLevel(-1)
+	slog.SetLogLoggerLevel(slog.LevelError + 1)
 
 	loader := &testInterfaceMapLoader{}
 
@@ -139,7 +140,7 @@ func TestLoadObjData_InterfaceMapChild_CorrectParam(t *testing.T) {
 
 // TestTimerEntries_RunAddTimerNoSkip 验证Run期间AddTimer不会导致同批到期timer被跳过
 func TestTimerEntries_RunAddTimerNoSkip(t *testing.T) {
-	SetLogLevel(-1)
+	slog.SetLogLoggerLevel(slog.LevelError + 1)
 	te := NewTimerEntriesWithArgs(nil, time.Millisecond)
 	te.Start()
 
@@ -185,7 +186,7 @@ func TestTimerEntries_RunAddTimerNoSkip(t *testing.T) {
 
 // TestTimerEntries_RunAddTimerWithRecurring 验证recurring timer + AddTimer场景
 func TestTimerEntries_RunAddTimerWithRecurring(t *testing.T) {
-	SetLogLevel(-1)
+	slog.SetLogLoggerLevel(slog.LevelError + 1)
 	te := NewTimerEntriesWithArgs(nil, time.Millisecond)
 	te.Start()
 
@@ -223,7 +224,7 @@ func TestTimerEntries_RunAddTimerWithRecurring(t *testing.T) {
 
 // TestConvertValueToStringOrInterface_NilPtr 验证nil指针返回明确错误
 func TestConvertValueToStringOrInterface_NilPtr(t *testing.T) {
-	SetLogLevel(-1)
+	slog.SetLogLoggerLevel(slog.LevelError + 1)
 
 	// nil指针
 	var nilPtr *int
@@ -242,7 +243,7 @@ func TestConvertValueToStringOrInterface_NilPtr(t *testing.T) {
 
 // TestConvertValueToStringOrInterface_NilInterface 验证nil interface返回明确错误
 func TestConvertValueToStringOrInterface_NilInterface(t *testing.T) {
-	SetLogLevel(-1)
+	slog.SetLogLoggerLevel(slog.LevelError + 1)
 
 	// nil interface比较特殊,reflect.ValueOf(nil)得到invalid Value
 	// 测试包含nil值的interface
@@ -262,7 +263,7 @@ func TestConvertValueToStringOrInterface_NilInterface(t *testing.T) {
 
 // TestConvertValueToStringOrInterface_NonNilPtr 验证非nil指针正常工作(回归测试)
 func TestConvertValueToStringOrInterface_NonNilPtr(t *testing.T) {
-	SetLogLevel(-1)
+	slog.SetLogLoggerLevel(slog.LevelError + 1)
 
 	// 非nil的int指针
 	v := 42
@@ -279,7 +280,7 @@ func TestConvertValueToStringOrInterface_NonNilPtr(t *testing.T) {
 
 // TestConvertValueToStringOrInterface_Bool 回归测试bool仍然正常
 func TestConvertValueToStringOrInterface_Bool(t *testing.T) {
-	SetLogLevel(-1)
+	slog.SetLogLoggerLevel(slog.LevelError + 1)
 
 	val := reflect.ValueOf(true)
 	result, err := convertValueToStringOrInterface(val)
@@ -305,8 +306,8 @@ type mockEntityDb struct {
 func (m *mockEntityDb) FindEntityById(interface{}, interface{}) (bool, error) { return false, nil }
 func (m *mockEntityDb) InsertEntity(interface{}, interface{}) (error, bool)   { return nil, false }
 func (m *mockEntityDb) SaveEntity(interface{}, interface{}) error             { return nil }
-func (m *mockEntityDb) DeleteEntity(interface{}) error                       { return nil }
-func (m *mockEntityDb) SaveComponent(interface{}, string, interface{}) error { return nil }
+func (m *mockEntityDb) DeleteEntity(interface{}) error                        { return nil }
+func (m *mockEntityDb) SaveComponent(interface{}, string, interface{}) error  { return nil }
 func (m *mockEntityDb) SaveComponents(interface{}, map[string]interface{}) error {
 	return nil
 }

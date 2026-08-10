@@ -34,7 +34,7 @@ func ConvertValueToInterface(srcType, dstType reflect.Type, srcValue reflect.Val
 			return ConvertInterfaceToRealType(dstType, srcValue.Interface())
 		}
 	default:
-		GetLogger().Error("unsupported type:%v", srcType.Kind())
+		glog.Error("unsupported type", "type", srcType.Kind())
 	}
 	return nil
 }
@@ -50,7 +50,7 @@ func ConvertValueToInt(srcType reflect.Type, v reflect.Value) int64 {
 		// NOTE:有精度问题
 		return int64(v.Float())
 	default:
-		GetLogger().Error("unsupported type:%v", srcType.Kind())
+		glog.Error("unsupported type", "type", srcType.Kind())
 	}
 	return 0
 }
@@ -97,7 +97,7 @@ func ConvertInterfaceToRealType(typ reflect.Type, v interface{}) interface{} {
 				protoErr := proto.Unmarshal(bytes, protoMessage)
 				if protoErr != nil {
 					// 反序列化失败不能把error对象当作业务值返回,否则会污染数据并导致后续类型断言失败
-					GetLogger().Error("ConvertInterfaceToRealType proto.Unmarshal err:%v type:%v", protoErr.Error(), typ.String())
+					glog.Error("ConvertInterfaceToRealType proto.Unmarshal", "err", protoErr, "type", typ.String())
 					return nil
 				}
 				return protoMessage
@@ -122,7 +122,7 @@ func ConvertInterfaceToRealType(typ reflect.Type, v interface{}) interface{} {
 		//	}
 		//}
 	}
-	GetLogger().Error("unsupported type:%v", typ.Kind())
+	glog.Error("unsupported type", "type", typ.Kind())
 	return nil
 }
 
@@ -135,7 +135,7 @@ func GetFieldValue(obj reflect.Value, fieldName string) reflect.Value {
 	} else if obj.Kind() == reflect.Struct {
 		return obj.FieldByName(fieldName)
 	} else {
-		GetLogger().Error("unsupported kind:%v", obj.Kind())
+		glog.Error("unsupported kind", "kind", obj.Kind())
 	}
 	return reflect.Value{}
 }
@@ -190,7 +190,7 @@ func ConvertStringToRealType(typ reflect.Type, v string) interface{} {
 			protoErr := proto.Unmarshal([]byte(v), protoMessage)
 			if protoErr != nil {
 				// 反序列化失败不能把error对象当作业务值返回,否则会污染数据并导致后续类型断言失败
-				GetLogger().Error("ConvertStringToRealType proto.Unmarshal err:%v", protoErr.Error())
+				glog.Error("ConvertStringToRealType proto.Unmarshal", "err", protoErr)
 				return nil
 			}
 			return protoMessage
@@ -199,7 +199,7 @@ func ConvertStringToRealType(typ reflect.Type, v string) interface{} {
 		// 目标类型是interface{}(如map[k]any),原样返回string,由上层(如InterfaceMapLoader)决定如何解析
 		return v
 	default:
-		GetLogger().Error("unsupported type:%v", typ.Kind())
+		glog.Error("unsupported type", "type", typ.Kind())
 	}
 	return nil
 }
@@ -220,12 +220,12 @@ func convertValueToString(val reflect.Value) (string, error) {
 		return val.String(), nil
 	case reflect.Interface:
 		if !val.CanInterface() {
-			GetLogger().Error("unsupport type:%v", val.Kind())
+			glog.Error("unsupport type", "type", val.Kind())
 			return "", errors.New(fmt.Sprintf("unsupport type:%v", val.Kind()))
 		}
 		return util.ToString(val.Interface())
 	default:
-		GetLogger().Error("unsupport type:%v", val.Kind())
+		glog.Error("unsupport type", "type", val.Kind())
 		return "", errors.New(fmt.Sprintf("unsupport type:%v", val.Kind()))
 	}
 }
@@ -245,7 +245,7 @@ func convertValueToStringOrInterface(val reflect.Value) (interface{}, error) {
 			return nil, errors.New("value is nil")
 		}
 		if !val.CanInterface() {
-			GetLogger().Error("unsupport type:%v", val.Kind())
+			glog.Error("unsupport type", "type", val.Kind())
 			return nil, errors.New(fmt.Sprintf("unsupport type:%v", val.Kind()))
 		}
 		i := val.Interface()
@@ -253,7 +253,7 @@ func convertValueToStringOrInterface(val reflect.Value) (interface{}, error) {
 		if protoMessage, ok := i.(proto.Message); ok {
 			bytes, protoErr := proto.Marshal(protoMessage)
 			if protoErr != nil {
-				GetLogger().Error("convert proto err:%v", protoErr.Error())
+				glog.Error("convert proto", "err", protoErr.Error())
 				return nil, protoErr
 			}
 			return bytes, nil
@@ -262,7 +262,7 @@ func convertValueToStringOrInterface(val reflect.Value) (interface{}, error) {
 		if valueSaveable, ok := i.(Saveable); ok {
 			valueSaveData, valueSaveErr := GetSaveData(valueSaveable, "")
 			if valueSaveErr != nil {
-				GetLogger().Error("convert Saveable err:%v", valueSaveErr.Error())
+				glog.Error("convert Saveable", "err", valueSaveErr)
 				return nil, valueSaveErr
 			}
 			return valueSaveData, nil
@@ -272,13 +272,13 @@ func convertValueToStringOrInterface(val reflect.Value) (interface{}, error) {
 	case reflect.Struct:
 		valInterface := convertStructToInterface(val)
 		if valInterface == nil {
-			GetLogger().Error("convertStructToInterfaceErr type:%v", val.Kind())
+			glog.Error("convertStructToInterfaceErr", "type", val.Kind())
 			return nil, errors.New(fmt.Sprintf("convertStructToInterfaceErr type:%v", val.Kind()))
 		}
 		return convertValueToStringOrInterface(reflect.ValueOf(valInterface))
 
 	default:
-		GetLogger().Error("unsupport type:%v", val.Kind())
+		glog.Error("unsupport type", "type", val.Kind())
 		return nil, errors.New(fmt.Sprintf("unsupport type:%v", val.Kind()))
 	}
 }

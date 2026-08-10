@@ -3,6 +3,7 @@ package examples
 import (
 	"github.com/fish-tennis/gentity"
 	"github.com/fish-tennis/gentity/examples/pb"
+	"log/slog"
 )
 
 const (
@@ -53,14 +54,14 @@ func (this *BaseInfo) SetLongFieldNameTest(str string) {
 
 // 组件上的事件响应接口
 func (this *BaseInfo) TriggerLoopCheckA(evt *LoopCheckA) {
-	gentity.GetLogger().Debug("BaseInfo.OnEventLoopCheckA:%v", evt)
+	slog.Debug("BaseInfo.OnEventLoopCheckA", "event", evt)
 	player := this.GetEntity().(*Player)
 	// 在LoopCheckA的响应事件中,触发LoopCheckB事件
 	player.FireEvent(&LoopCheckB{Name: "abcde"})
 }
 
 func (this *BaseInfo) TriggerLoopCheckB(evt *LoopCheckB) {
-	gentity.GetLogger().Debug("BaseInfo.OnEventLoopCheckB:%v", evt)
+	slog.Debug("BaseInfo.OnEventLoopCheckB", "event", evt)
 	player := this.GetEntity().(*Player)
 	// 在LoopCheckB的响应事件中,触发LoopCheckA事件
 	player.FireEvent(&LoopCheckA{Num: 123})

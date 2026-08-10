@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/fish-tennis/gentity"
 	"github.com/fish-tennis/gentity/examples/pb"
+	"log/slog"
 	"reflect"
 )
 
@@ -33,26 +34,26 @@ func (this *Player) FireEvent(event any) {
 		this.fireEventLoopChecker[reflect.TypeOf(event)]--
 	}()
 	if this.fireEventLoopChecker[reflect.TypeOf(event)] > 1 {
-		gentity.GetLogger().Warn("FireEventLoopChecker depth:%v event:%v", this.fireEventLoopChecker, reflect.TypeOf(event).String())
+		slog.Warn("FireEventLoopChecker", "depth", this.fireEventLoopChecker, "event", reflect.TypeOf(event).String())
 		if this.fireEventLoopChecker[reflect.TypeOf(event)] > _fireSameEventLoopLimit {
-			gentity.GetLogger().Error("FireEvent stop, limit:%v event:%v", _fireSameEventLoopLimit, reflect.TypeOf(event).String())
+			slog.Error("FireEvent stop", "limit", _fireSameEventLoopLimit, "event", reflect.TypeOf(event).String())
 			return
 		}
 	}
 	hasHandler := _playerEventHandlerMgr.Invoke(this, event)
 	if !hasHandler {
-		gentity.GetLogger().Debug("no event handler:%v", reflect.TypeOf(event).String())
+		slog.Debug("no event handler", "event", reflect.TypeOf(event).String())
 	}
 }
 
 //// entity上的消息回调接口
 //func (this *Player) OnFinishQuestRes(reqCmd gnet.PacketCommand, req *pb.FinishQuestRes) {
-//	gentity.GetLogger().Debug("OnFinishQuestRes:%v", req)
+//	slog.Debug("OnFinishQuestRes", "req", req)
 //}
 
 // entity上的事件响应接口
 func (this *Player) TriggerPlayerEntryGame(evt *PlayerEntryGame) {
-	gentity.GetLogger().Debug("Player.OnEventPlayerEntryGame:%v", evt)
+	slog.Debug("Player.OnEventPlayerEntryGame", "event", evt)
 }
 
 func newTestPlayer(playerId, accountId int64) *Player {

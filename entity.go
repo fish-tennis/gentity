@@ -79,10 +79,10 @@ func (this *BaseEntity) RangeComponent(fun func(component Component) bool) {
 
 func (this *BaseEntity) AddComponent(component Component) {
 	if len(component.GetName()) == 0 {
-		GetLogger().Error("Component Name empty")
+		glog.Error("Component Name empty")
 	}
 	if this.GetComponentByName(component.GetName()) != nil {
-		GetLogger().Error("Component Name already exist:%v", component.GetName())
+		glog.Error("Component Name already exist", "name", component.GetName())
 		return
 	}
 	this.components = append(this.components, component)

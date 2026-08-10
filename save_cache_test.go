@@ -2,6 +2,7 @@ package gentity
 
 import (
 	"fmt"
+	"log/slog"
 	"reflect"
 	"testing"
 	"time"
@@ -129,7 +130,7 @@ type testCacheProto struct {
 // ==================== Test: SaveChangedDataToCache (DirtyMark) ====================
 
 func TestSaveChangedDataToCache_DirtyMark_Proto(t *testing.T) {
-	SetLogLevel(-1)
+	slog.SetLogLoggerLevel(slog.LevelError + 1)
 	cache := newMockKvCacheForSave()
 
 	obj := &testCacheProto{
@@ -163,7 +164,7 @@ func TestSaveChangedDataToCache_DirtyMark_Proto(t *testing.T) {
 }
 
 func TestSaveChangedDataToCache_DirtyMark_NotDirty(t *testing.T) {
-	SetLogLevel(-1)
+	slog.SetLogLoggerLevel(slog.LevelError + 1)
 	cache := newMockKvCacheForSave()
 
 	obj := &testCacheProto{
@@ -186,7 +187,7 @@ func TestSaveChangedDataToCache_DirtyMark_NotDirty(t *testing.T) {
 }
 
 func TestSaveChangedDataToCache_MapDirtyMark(t *testing.T) {
-	SetLogLevel(-1)
+	slog.SetLogLoggerLevel(slog.LevelError + 1)
 	cache := newMockKvCacheForSave()
 
 	obj := NewMapData[int32, int32]()
@@ -232,7 +233,7 @@ func TestSaveChangedDataToCache_MapDirtyMark(t *testing.T) {
 // ==================== Test: SaveValueToCache ====================
 
 func TestSaveValueToCache_Proto(t *testing.T) {
-	SetLogLevel(-1)
+	slog.SetLogLoggerLevel(slog.LevelError + 1)
 	cache := newMockKvCacheForSave()
 
 	val := reflect.ValueOf(&pb.BaseInfo{Level: 1})
@@ -247,7 +248,7 @@ func TestSaveValueToCache_Proto(t *testing.T) {
 }
 
 func TestSaveValueToCache_Slice(t *testing.T) {
-	SetLogLevel(-1)
+	slog.SetLogLoggerLevel(slog.LevelError + 1)
 	cache := newMockKvCacheForSave()
 
 	val := reflect.ValueOf([]int32{1, 2, 3})
@@ -269,7 +270,7 @@ func TestSaveValueToCache_Slice(t *testing.T) {
 // ==================== Test: SaveMapValueToCache ====================
 
 func TestSaveMapValueToCache_FirstTime(t *testing.T) {
-	SetLogLevel(-1)
+	slog.SetLogLoggerLevel(slog.LevelError + 1)
 	cache := newMockKvCacheForSave()
 
 	obj := NewMapData[int32, int32]()
@@ -306,7 +307,7 @@ func TestSaveMapValueToCache_FirstTime(t *testing.T) {
 }
 
 func TestSaveMapValueToCache_Incremental(t *testing.T) {
-	SetLogLevel(-1)
+	slog.SetLogLoggerLevel(slog.LevelError + 1)
 	cache := newMockKvCacheForSave()
 
 	obj := NewMapData[int32, int32]()

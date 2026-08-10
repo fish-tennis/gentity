@@ -3,6 +3,7 @@ package examples
 import (
 	"github.com/fish-tennis/gentity"
 	"github.com/fish-tennis/gentity/examples/pb"
+	"log/slog"
 	"math"
 )
 
@@ -62,7 +63,7 @@ func (this *BagCountItem) AddItem(itemCfgId, addCount int32) int32 {
 		curCount = addCount
 	}
 	this.Set(itemCfgId, curCount)
-	gentity.GetLogger().Debug("AddItem cfgId:%v curCount:%v addCount:%v", itemCfgId, curCount, addCount)
+	slog.Debug("AddItem", "cfgId", itemCfgId, "curCount", curCount, "addCount", addCount)
 	return addCount
 }
 
@@ -76,11 +77,11 @@ func (this *BagCountItem) DelItem(itemCfgId, delCount int32) int32 {
 	}
 	if delCount >= curCount {
 		this.Delete(itemCfgId)
-		gentity.GetLogger().Debug("DelItem cfgId:%v delCount:%v/%v", itemCfgId, curCount, delCount)
+		slog.Debug("DelItem", "cfgId", itemCfgId, "curCount", curCount, "delCount", delCount)
 		return curCount
 	} else {
 		this.Set(itemCfgId, curCount-delCount)
-		gentity.GetLogger().Debug("DelItem cfgId:%v delCount:%v", itemCfgId, delCount)
+		slog.Debug("DelItem", "cfgId", itemCfgId, "delCount", delCount)
 		return delCount
 	}
 }
@@ -93,7 +94,7 @@ type BagUniqueItem struct {
 func (this *BagUniqueItem) AddUniqueItem(uniqueItem *pb.UniqueItem) int32 {
 	if _, ok := this.Data[uniqueItem.UniqueId]; !ok {
 		this.Set(uniqueItem.UniqueId, uniqueItem)
-		gentity.GetLogger().Debug("AddUniqueItem CfgId:%v UniqueId:%v", uniqueItem.CfgId, uniqueItem.UniqueId)
+		slog.Debug("AddUniqueItem", "cfgId", uniqueItem.CfgId, "uniqueId", uniqueItem.UniqueId)
 		return 1
 	}
 	return 0
@@ -102,7 +103,7 @@ func (this *BagUniqueItem) AddUniqueItem(uniqueItem *pb.UniqueItem) int32 {
 func (this *BagUniqueItem) DelUniqueItem(uniqueId int64) int32 {
 	if _, ok := this.Data[uniqueId]; ok {
 		this.Delete(uniqueId)
-		gentity.GetLogger().Debug("DelUniqueItem UniqueId:%v", uniqueId)
+		slog.Debug("DelUniqueItem", "uniqueId", uniqueId)
 		return 1
 	}
 	return 0

@@ -7,6 +7,7 @@ import (
 	"github.com/fish-tennis/gentity/examples/pb"
 	"github.com/redis/go-redis/v9"
 	"google.golang.org/protobuf/proto"
+	"log/slog"
 	"testing"
 	"time"
 )
@@ -46,7 +47,7 @@ func initRedis() gentity.KvCache {
 
 // 测试根据账号查找角色的接口
 func TestFindPlayerId(t *testing.T) {
-	gentity.SetLogLevel(gentity.DebugLevel)
+	slog.SetLogLoggerLevel(slog.LevelDebug)
 	mongoDb := gentity.NewMongoDb(_mongoUri, _mongoDbName)
 	playerDb := mongoDb.RegisterPlayerDb(_collectionName, true, "_id", "AccountId", "RegionId")
 	if !mongoDb.Connect() {
@@ -90,7 +91,7 @@ func TestFindPlayerId(t *testing.T) {
 
 // 测试缓存接口
 func TestDbCache(t *testing.T) {
-	gentity.SetLogLevel(gentity.DebugLevel)
+	slog.SetLogLoggerLevel(slog.LevelDebug)
 	mongoDb := gentity.NewMongoDb(_mongoUri, _mongoDbName)
 	playerDb := mongoDb.RegisterPlayerDb(_collectionName, true, "_id", "AccountId", "RegionId")
 	if !mongoDb.Connect() {
@@ -192,7 +193,7 @@ func TestDbCache(t *testing.T) {
 
 // 测试从缓存修复数据的接口
 func TestFixDataFromCache(t *testing.T) {
-	gentity.SetLogLevel(gentity.DebugLevel)
+	slog.SetLogLoggerLevel(slog.LevelDebug)
 	mongoDb := gentity.NewMongoDb(_mongoUri, _mongoDbName)
 	playerDb := mongoDb.RegisterPlayerDb(_collectionName, true, "_id", "AccountId", "RegionId")
 	if !mongoDb.Connect() {
@@ -282,7 +283,7 @@ func TestFixDataFromCache(t *testing.T) {
 
 // 测试自动注册
 func TestHandlerRegister(t *testing.T) {
-	gentity.SetLogLevel(gentity.DebugLevel)
+	slog.SetLogLoggerLevel(slog.LevelDebug)
 	// 注册消息回调接口和事件响应接口
 	autoRegisterTestPlayer()
 	player := newTestPlayer(0, 0)
@@ -298,7 +299,7 @@ func TestHandlerRegister(t *testing.T) {
 }
 
 func TestPlayerData(t *testing.T) {
-	gentity.SetLogLevel(gentity.DebugLevel)
+	slog.SetLogLoggerLevel(slog.LevelDebug)
 	mongoDb := gentity.NewMongoDb(_mongoUri, _mongoDbName)
 	playerDb := mongoDb.RegisterPlayerDb(_collectionName, true, "_id", "AccountId", "RegionId")
 	if !mongoDb.Connect() {

@@ -42,7 +42,7 @@ func (cr *ComponentRegister[E]) Register(componentName string, ctorOrder int, ct
 		}
 		return cmp.Compare(a.CtorOrder, b.CtorOrder)
 	})
-	GetLogger().Info("ComponentRegister name:%v order:%v", componentName, ctorOrder)
+	glog.Info("ComponentRegister", "name", componentName, "order", ctorOrder)
 }
 
 // 初始化组件

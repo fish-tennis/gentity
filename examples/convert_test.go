@@ -4,6 +4,7 @@ import (
 	"github.com/fish-tennis/gentity"
 	"github.com/fish-tennis/gentity/examples/pb"
 	"google.golang.org/protobuf/proto"
+	"log/slog"
 	"reflect"
 	"testing"
 )
@@ -152,7 +153,7 @@ func TestSaveableStruct(t *testing.T) {
 }
 
 func TestChildSaveableStruct(t *testing.T) {
-	gentity.SetLogLevel(-1)
+	slog.SetLogLoggerLevel(slog.LevelError + 1)
 	//bag := &Bag{
 	//	BagCountItem: &BagCountItem{},
 	//	BagUniqueItem: &BagUniqueItem{

@@ -1,6 +1,9 @@
 package gentity
 
-import "testing"
+import (
+	"log/slog"
+	"testing"
+)
 
 // ==================== 测试辅助类型 ====================
 
@@ -67,9 +70,8 @@ func TestBaseEntity_AddComponent(t *testing.T) {
 // TestBaseEntity_DuplicateComponent 测试添加同名组件时第二次被拒绝
 func TestBaseEntity_DuplicateComponent(t *testing.T) {
 	// 抑制预期的错误日志输出
-	oldLevel := logLevel
-	logLevel = ErrorLevel + 1
-	defer func() { logLevel = oldLevel }()
+	oldLevel := slog.SetLogLoggerLevel(slog.LevelError + 1)
+	defer func() { slog.SetLogLoggerLevel(oldLevel) }()
 
 	e := &BaseEntity{}
 	c1 := newTestComp("Dup")

@@ -31,7 +31,7 @@ func SaveObjectChangedDataToCache(kvCache KvCache, parentCacheKey string, obj an
 		cacheKey := parentCacheKey
 		fieldObj, saveableField := objStruct.GetSingleSaveable(obj)
 		if fieldObj == nil {
-			GetLogger().Error("cache %v err", cacheKey)
+			glog.Error("SaveObjectChangedDataToCache fieldObj nil", "cacheKey", cacheKey)
 			return
 		}
 		SaveChangedDataToCache(kvCache, fieldObj, cacheKey, saveableField)
@@ -47,7 +47,7 @@ func SaveObjectChangedDataToCache(kvCache KvCache, parentCacheKey string, obj an
 			if util.IsValueNil(fieldVal) {
 				_, err := kvCache.Del(cacheKey)
 				if IsRedisError(err) {
-					GetLogger().Error("cache child err cacheKey:%v fieldName:%v err:%v", cacheKey, childStruct.Name, err.Error())
+					glog.Error("SaveObjectChangedDataToCache child err", "cacheKey", cacheKey, "fieldName", childStruct.Name, "err", err)
 				}
 				continue
 			}
@@ -59,7 +59,7 @@ func SaveObjectChangedDataToCache(kvCache KvCache, parentCacheKey string, obj an
 			//	fieldInterface = fieldVal.Interface()
 			//}
 			if fieldInterface == nil {
-				GetLogger().Error("cache child err cacheKey:%v", cacheKey)
+				glog.Error("SaveObjectChangedDataToCache field err", "cacheKey", cacheKey)
 				continue
 			}
 			SaveChangedDataToCache(kvCache, fieldInterface, cacheKey, saveableField)
@@ -88,14 +88,14 @@ func saveDirtyMark(kvCache KvCache, obj interface{}, cacheKeyName string, fieldC
 		if util.IsValueNil(val) {
 			_, err := kvCache.Del(cacheKeyName)
 			if IsRedisError(err) {
-				GetLogger().Error("%v cache err:%v", cacheKeyName, err.Error())
+				glog.Error("kvCache.Del err", "cacheKey", cacheKeyName, "err", err)
 				return
 			}
 		} else {
 			SaveValueToCache(kvCache, cacheKeyName, val)
 		}
 		dirtyMark.ResetDirty()
-		GetLogger().Debug("SaveCache %v", cacheKeyName)
+		glog.Debug("SaveCache", "cacheKey", cacheKeyName)
 	}
 }
 
@@ -113,14 +113,14 @@ func saveMapDirtyMark(kvCache KvCache, obj interface{}, cacheKeyName string, fie
 		if util.IsValueNil(val) {
 			_, err := kvCache.Del(cacheKeyName)
 			if IsRedisError(err) {
-				GetLogger().Error("%v cache err:%v", cacheKeyName, err.Error())
+				glog.Error("kvCache.Del err", "cacheKey", cacheKeyName, "err", err)
 				return
 			}
 		} else {
 			SaveMapValueToCache(kvCache, cacheKeyName, val, dirtyMark)
 		}
 		dirtyMark.ResetDirty()
-		GetLogger().Debug("SaveCache %v", cacheKeyName)
+		glog.Debug("SaveMapCache", "cacheKey", cacheKeyName)
 	}
 }
 
@@ -151,11 +151,11 @@ func SaveValueToCache(kvCache KvCache, cacheKeyName string, val reflect.Value) {
 			// proto.Message -> []byte
 			err := kvCache.Set(cacheKeyName, realData, 0)
 			if err != nil {
-				GetLogger().Error("%v cache err:%v", cacheKeyName, err.Error())
+				glog.Error("kvCache.Set err", "cacheKey", cacheKeyName, "err", err)
 				return
 			}
 		default:
-			GetLogger().Error("%v cache err:unsupport type:%v", cacheKeyName, reflect.TypeOf(realData))
+			glog.Error("SaveValueToCache err:unsupport type", "cacheKey", cacheKeyName, "type", reflect.TypeOf(realData))
 			return
 		}
 
@@ -164,20 +164,20 @@ func SaveValueToCache(kvCache KvCache, cacheKeyName string, val reflect.Value) {
 			SaveValueToCache(kvCache, cacheKeyName, reflect.ValueOf(cacheData))
 			return
 		}
-		GetLogger().Error("%v cache err:unsupport type:%v", cacheKeyName, val)
+		glog.Error("SaveValueToCache err:unsupport type", "cacheKey", cacheKeyName, "type", val)
 
 	case reflect.Map:
 		// map格式作为一个整体缓存时,需要先删除之前的数据
 		_, err := kvCache.Del(cacheKeyName)
 		if IsRedisError(err) {
-			GetLogger().Error("%v cache err:%v", cacheKeyName, err.Error())
+			glog.Error("kvCache.Del err", "cacheKey", cacheKeyName, "err", err)
 			return
 		}
 		cacheData := val.Interface()
 		// map -> hash
 		err = kvCache.SetMap(cacheKeyName, cacheData)
 		if IsRedisError(err) {
-			GetLogger().Error("%v cache err:%v", cacheKeyName, err.Error())
+			glog.Error("cache err", "cacheKey", cacheKeyName, "err", err)
 			return
 		}
 
@@ -186,18 +186,18 @@ func SaveValueToCache(kvCache KvCache, cacheKeyName string, val reflect.Value) {
 		// slice,用json序列化
 		jsonBytes, err := json.Marshal(cacheData)
 		if err != nil {
-			GetLogger().Error("%v json.Marshal err:%v", cacheKeyName, err.Error())
+			glog.Error("json.Marshal err", "cacheKey", cacheKeyName, "err", err)
 			return
 		}
 		// slice -> []byte
 		err = kvCache.Set(cacheKeyName, string(jsonBytes), 0)
 		if IsRedisError(err) {
-			GetLogger().Error("%v cache err:%v", cacheKeyName, err.Error())
+			glog.Error("kvCache.Set err", "cacheKey", cacheKeyName, "err", err)
 			return
 		}
 
 	default:
-		GetLogger().Error("%v cache err:unsupport kind:%v", cacheKeyName, val.Kind())
+		glog.Error("SaveValueToCache err:unsupport kind", "cacheKey", cacheKeyName, "kind", val.Kind())
 	}
 }
 
@@ -211,7 +211,7 @@ func SaveMapValueToCache(kvCache KvCache, cacheKeyName string, val reflect.Value
 		}
 		err := kvCache.SetMap(cacheKeyName, cacheData)
 		if IsRedisError(err) {
-			GetLogger().Error("%v cache err:%v", cacheKeyName, err.Error())
+			glog.Error("kvCache.SetMap err", "cacheKey", cacheKeyName, "err", err)
 			return
 		}
 		dirtyMark.SetCached()
@@ -224,12 +224,12 @@ func SaveMapValueToCache(kvCache KvCache, cacheKeyName string, val reflect.Value
 				if mapValue.IsValid() {
 					// use ConvertValueToInterface()?
 					if !mapValue.CanInterface() {
-						GetLogger().Error("%v mapValue.CanInterface() false dirtyKey:%v", cacheKeyName, dirtyKey)
+						glog.Error("mapValue.CanInterface() false", "cacheKey", cacheKeyName, "dirtyKey", dirtyKey)
 						return
 					}
 					setMap[dirtyKey] = mapValue.Interface()
 				} else {
-					GetLogger().Debug("%v mapValue.IsValid() false dirtyKey:%v", cacheKeyName, dirtyKey)
+					glog.Debug("mapValue.IsValid() false", "cacheKey", cacheKeyName, "dirtyKey", dirtyKey)
 				}
 			} else {
 				// delete
@@ -240,7 +240,7 @@ func SaveMapValueToCache(kvCache KvCache, cacheKeyName string, val reflect.Value
 			// 批量更新
 			err := kvCache.SetMap(cacheKeyName, setMap)
 			if IsRedisError(err) {
-				GetLogger().Error("%v cache %v err:%v", cacheKeyName, setMap, err.Error())
+				glog.Error("kvCache.SetMap err", "cacheKey", cacheKeyName, "setMap", setMap, "err", err)
 				return
 			}
 		}
@@ -248,7 +248,7 @@ func SaveMapValueToCache(kvCache KvCache, cacheKeyName string, val reflect.Value
 			// 批量删除
 			_, err := kvCache.HDel(cacheKeyName, delMap...)
 			if IsRedisError(err) {
-				GetLogger().Error("%v cache %v err:%v", cacheKeyName, delMap, err.Error())
+				glog.Error("kvCache.HDel err", "cacheKey", cacheKeyName, "delMap", delMap, "err", err)
 				return
 			}
 		}
@@ -278,17 +278,17 @@ func saveObjectChangedDataToDbByKey(entityDb EntityDb, obj any, entityKey interf
 	if objStruct.IsSingleField() {
 		saveable, saveableField := objStruct.GetSingleSaveable(obj)
 		if saveable == nil {
-			GetLogger().Error("%v Save %v Err:obj not a saveable", entityKey, objStruct.Field.Name)
+			glog.Error("saveObjectChangedDataToDbByKey Err:obj not a saveable", "entityKey", entityKey, "field", objStruct.Field.Name)
 			return
 		}
 		// 如果某个组件数据没改变过,就无需保存
 		if !saveable.IsChanged() {
-			GetLogger().Debug("%v ignore %v", entityKey, saveableField.Name)
+			glog.Debug("saveObjectChangedDataToDbByKey ignore", "entityKey", entityKey, "field", saveableField.Name)
 			return
 		}
 		saveData, err := getSaveDataOfSaveable(saveable, saveableField, objName)
 		if err != nil {
-			GetLogger().Error("%v Save %v err:%v", entityKey, saveableField.Name, err.Error())
+			glog.Error("getSaveDataOfSaveable err", "entityKey", entityKey, "field", saveableField.Name, "err", err)
 			return
 		}
 		// 使用protobuf存mongodb时,mongodb默认会把字段名转成小写,因为protobuf没设置bson tag
@@ -297,7 +297,7 @@ func saveObjectChangedDataToDbByKey(entityDb EntityDb, obj any, entityKey interf
 			record.delKeys = append(record.delKeys, fmt.Sprintf("%v.%v", parentCacheKey, saveableField.Name))
 		}
 		record.saved = append(record.saved, saveable)
-		GetLogger().Debug("SaveDb %v %v", entityKey, saveableField.Name)
+		glog.Debug("saveObjectChangedDataToDbByKey", "entityKey", entityKey, "field", saveableField.Name)
 	} else {
 		objVal := reflect.ValueOf(obj)
 		if objVal.Kind() == reflect.Pointer {
@@ -306,17 +306,17 @@ func saveObjectChangedDataToDbByKey(entityDb EntityDb, obj any, entityKey interf
 		for childIndex, childStruct := range objStruct.Children {
 			saveable, saveableField := objStruct.GetChildSaveable(obj, childIndex)
 			if saveable == nil {
-				GetLogger().Error("%v SaveChild %v Err:field not a saveable", entityKey, childStruct.Name)
+				glog.Error("saveObjectChangedDataToDbByKey Err:field not a saveable", "entityKey", entityKey, "field", childStruct.Name)
 				continue
 			}
 			// 如果某个组件数据没改变过,就无需保存
 			if !saveable.IsChanged() {
-				GetLogger().Debug("%v ignore child %v", entityKey, saveableField.Name)
+				glog.Debug("saveObjectChangedDataToDbByKey ignore child", "entityKey", entityKey, "field", saveableField.Name)
 				continue
 			}
 			saveData, err := getSaveDataOfSaveable(saveable, saveableField, objName)
 			if err != nil {
-				GetLogger().Error("%v SaveChild %v err:%v", entityKey, saveableField.Name, err.Error())
+				glog.Error("getSaveDataOfSaveable err", "entityKey", entityKey, "field", saveableField.Name, "err", err)
 				continue
 			}
 			// 使用protobuf存mongodb时,mongodb默认会把字段名转成小写,因为protobuf没设置bson tag
@@ -331,7 +331,7 @@ func saveObjectChangedDataToDbByKey(entityDb EntityDb, obj any, entityKey interf
 				record.delKeys = append(record.delKeys, fmt.Sprintf("%v.%v", parentCacheKey, childName))
 			}
 			record.saved = append(record.saved, saveable)
-			GetLogger().Debug("SaveDb Child %v %v", entityKey, childName)
+			glog.Debug("saveObjectChangedDataToDbByKey Child", "entityKey", entityKey, "child", childName)
 		}
 	}
 }
@@ -349,17 +349,17 @@ func SaveEntityChangedDataToDbByKey(entityDb EntityDb, entity Entity, entityKey 
 		return true
 	})
 	if len(record.changedData) == 0 {
-		GetLogger().Debug("ignore unchanged data %v", entityKey)
+		glog.Debug("SaveEntityChangedDataToDbByKey ignore unchanged data", "entityKey", entityKey)
 		return nil
 	}
 	// NOTE: 明文保存的proto字段,字段名会被mongodb自动转为小写 Q:有办法解决吗?
 	// 如examples里的baseInfoComponent的pb.BaseInfo的LongFieldNameTest字段在mongodb中会被转成longfieldnametest
 	saveDbErr := entityDb.SaveComponents(entityKey, record.changedData)
 	if saveDbErr != nil {
-		GetLogger().Error("SaveDb %v err:%v", entityKey, saveDbErr)
-		GetLogger().Error("%v", record.changedData)
+		glog.Error("SaveEntityChangedDataToDbByKey", "entityKey", entityKey, "err", saveDbErr)
+		glog.Error("SaveEntityChangedDataToDbByKeyErr", "data", record.changedData)
 	} else {
-		GetLogger().Debug("SaveDb %v", entityKey)
+		glog.Debug("SaveEntityChangedDataToDbByKey", "entityKey", entityKey)
 	}
 	if saveDbErr == nil {
 		// 保存数据库成功后,重置修改标记
@@ -369,7 +369,7 @@ func SaveEntityChangedDataToDbByKey(entityDb EntityDb, entity Entity, entityKey 
 		if len(record.delKeys) > 0 {
 			// 保存数据库成功后,才删除缓存
 			kvCache.Del(record.delKeys...)
-			GetLogger().Debug("RemoveCache %v %v", entityKey, record.delKeys)
+			glog.Debug("RemoveCache", "entityKey", entityKey, "delKeys", record.delKeys)
 		}
 	}
 	return saveDbErr
@@ -385,11 +385,11 @@ func GetEntitySaveData(entity Entity, componentDatas map[string]interface{}) {
 		}
 		saveData, err := GetComponentSaveData(component)
 		if err != nil {
-			GetLogger().Error("%v %v err:%v", entity.GetId(), component.GetName(), err.Error())
+			glog.Error("GetEntitySaveData err", "entityKey", entity.GetId(), "component", component.GetName(), "err", err)
 			return true
 		}
 		componentDatas[GetComponentSaveName(component)] = saveData
-		GetLogger().Debug("GetEntitySaveData %v %v", entity.GetId(), component.GetName())
+		glog.Debug("GetEntitySaveData", "entityKey", entity.GetId(), "component", component.GetName())
 		return true
 	})
 }
@@ -405,7 +405,7 @@ func saveFieldMapByKeyType[K comparable](obj interface{}, field reflect.Value, p
 		valueInterface := it.Value().Interface()
 		v, err := getInterfaceSaveData(valueInterface, parentName, fieldStruct)
 		if err != nil {
-			GetLogger().Error("%v.%v convert key:%v err:%v", parentName, fieldStruct.Name, key, err.Error())
+			glog.Error("getInterfaceSaveDataErr", "parent", parentName, "field", fieldStruct.Name, "key", key, "err", err)
 			return nil, err
 		}
 		newMap[key] = v
@@ -454,7 +454,7 @@ func saveFieldMap(obj interface{}, field reflect.Value, parentName string, field
 				return iter.Key().Complex()
 			})
 		default:
-			GetLogger().Error("%v.%v unsupported map key type:%v", parentName, fieldStruct.Name, keyType.Kind())
+			glog.Error("unsupported map key type", "parent", parentName, "field", fieldStruct.Name, "type", keyType.Kind())
 			return nil, ErrUnsupportedKeyType
 		}
 	} else {
@@ -473,7 +473,7 @@ func saveFieldSlice(obj interface{}, field reflect.Value, parentName string, fie
 			valueInterface := sliceElem.Interface()
 			v, err := getInterfaceSaveData(valueInterface, parentName, fieldStruct)
 			if err != nil {
-				GetLogger().Error("%v.%v convert index:%v err:%v", parentName, fieldStruct.Name, i, err.Error())
+				glog.Error("getInterfaceSaveDataErr", "parent", parentName, "field", fieldStruct.Name, "index", i, "err", err)
 				return nil, err
 			}
 			newSlice = append(newSlice, v)
@@ -495,7 +495,7 @@ func saveFieldStruct(obj interface{}, field reflect.Value, parentName string, fi
 	if fieldInterface := convertStructToInterface(field); fieldInterface != nil {
 		return getInterfaceSaveData(fieldInterface, parentName, fieldStruct)
 	}
-	GetLogger().Error("%v.%v not a addr struct type:%v", parentName, fieldStruct.Name, field.Type().String())
+	glog.Error("not a addr struct", "parent", parentName, "field", fieldStruct.Name, "type", field.Type().String())
 	return field.Interface(), nil
 }
 
@@ -524,13 +524,13 @@ func getSaveableSaveData(fieldInterface any, parentName string, fieldStruct *Sav
 	if valueSaveable, ok := fieldInterface.(Saveable); ok {
 		valueSaveData, valueSaveErr := GetSaveData(valueSaveable, parentName)
 		if valueSaveErr != nil {
-			GetLogger().Error("%v.%v Saveable err:%v", parentName, fieldStruct.Name, valueSaveErr.Error())
+			glog.Error("Saveable err", "parent", parentName, "field", fieldStruct.Name, "err", valueSaveErr)
 			return nil, valueSaveErr
 		}
 		return valueSaveData, nil
 	} else {
 		// TODO:扩展一个自定义序列化接口 customSerialize()(interface{}, error)
-		GetLogger().Error("%v.%v not Saveable type:%v", parentName, fieldStruct.Name, reflect.TypeOf(fieldInterface).String())
+		glog.Error("not Saveable", "parent", parentName, "field", fieldStruct.Name, "type", reflect.TypeOf(fieldInterface).String())
 		return nil, errors.New(fmt.Sprintf("%v.%v not Saveable type:%v", parentName, fieldStruct.Name, reflect.TypeOf(fieldInterface).String()))
 	}
 }
@@ -573,7 +573,7 @@ func getSaveDataOfSaveable(saveable Saveable, saveableField *SaveableField, pare
 	case reflect.String:
 		return field.String(), nil
 	default:
-		GetLogger().Error("%v %v unsupported fieldKind:%v", parentName, saveableField.Name, field.Kind())
+		glog.Error("unsupported fieldKind", "parent", parentName, "field", saveableField.Name, "kind", field.Kind())
 		return nil, ErrUnsupportedKeyType
 	}
 }
@@ -582,7 +582,7 @@ func getSaveDataOfSaveable(saveable Saveable, saveableField *SaveableField, pare
 func GetSaveData(obj any, parentName string) (interface{}, error) {
 	objStruct := GetObjSaveableStruct(obj)
 	if objStruct == nil {
-		GetLogger().Error("not saveable %v type:%v", parentName, reflect.TypeOf(obj))
+		glog.Error("not saveable", "parent", parentName, "type", reflect.TypeOf(obj))
 		return nil, nil
 	}
 	objVal := reflect.ValueOf(obj)
@@ -593,7 +593,7 @@ func GetSaveData(obj any, parentName string) (interface{}, error) {
 		saveable, saveableField := objStruct.GetSingleSaveable(obj)
 		if saveable == nil {
 			// return nil, nil
-			GetLogger().Error("GetSaveData %v.%v err", parentName, objStruct.Field.Name)
+			glog.Error("GetSaveData err", "parent", parentName, "field", objStruct.Field.Name)
 			return nil, ErrUnsupportedType
 		}
 		return getSaveDataOfSaveable(saveable, saveableField, parentName)
@@ -603,13 +603,13 @@ func GetSaveData(obj any, parentName string) (interface{}, error) {
 		for childIndex, childStruct := range objStruct.Children {
 			saveable, saveableField := objStruct.GetChildSaveable(obj, childIndex)
 			if saveable == nil {
-				GetLogger().Error("GetSaveData %v Err:field not a saveable", childStruct.Name)
+				glog.Error("GetSaveData Err:field not a saveable", "field", childStruct.Name)
 				return nil, ErrNotSaveable
 			}
 			childName := parentName + "." + childStruct.Name
 			childSaveData, err := getSaveDataOfSaveable(saveable, saveableField, childName)
 			if err != nil {
-				GetLogger().Error("GetSaveDataErr %v", childName)
+				glog.Error("GetSaveDataErr", "childName", childName)
 				return nil, err
 			}
 			compositeSaveData[childStruct.Name] = childSaveData

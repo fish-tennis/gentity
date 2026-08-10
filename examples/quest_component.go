@@ -3,6 +3,7 @@ package examples
 import (
 	"github.com/fish-tennis/gentity"
 	"github.com/fish-tennis/gentity/examples/pb"
+	"log/slog"
 	"slices"
 )
 
@@ -46,10 +47,10 @@ func (this *Quest) AddFinishId(id int32) {
 //// 完成任务的消息回调
 //// 这种格式写的函数可以自动注册客户端消息回调
 //func (this *Quest) OnFinishQuestReq(reqCmd gnet.PacketCommand, req *pb.FinishQuestReq) {
-//	gentity.GetLogger().Debug("OnFinishQuestReq:%v", req)
+//	slog.Debug("OnFinishQuestReq", "req", req)
 //}
 
 // 组件上的事件响应接口
 func (this *Quest) TriggerPlayerEntryGame(evt *PlayerEntryGame) {
-	gentity.GetLogger().Debug("Quest.OnEventPlayerEntryGame:%v", evt)
+	slog.Debug("Quest.OnEventPlayerEntryGame", "event", evt)
 }

@@ -41,16 +41,16 @@ func LoadEntityData(entity Entity, entityData interface{}) error {
 			return true
 		}
 		if !dataVal.IsValid() {
-			GetLogger().Error("ComponentName not match %v %v", entity.GetId(), component.GetName())
+			glog.Error("ComponentName not match", "entityId", entity.GetId(), "component", component.GetName())
 			return true
 		}
 		if !dataVal.CanInterface() {
-			GetLogger().Error("LoadEntityData %v %v entityData's field CantInterface", entity.GetId(), component.GetName())
+			glog.Error("LoadEntityData entityData's field CantInterface", "entityId", entity.GetId(), "component", component.GetName())
 			return false
 		}
 		err = LoadObjData(component, dataVal.Interface())
 		if err != nil {
-			GetLogger().Error("LoadEntityData %v %v err:%v", entity.GetId(), component.GetName(), err.Error())
+			glog.Error("LoadEntityData", "entityId", entity.GetId(), "component", component.GetName(), "err", err)
 			return false
 		}
 		return true
@@ -71,18 +71,18 @@ func LoadObjData(obj any, sourceData interface{}) error {
 		if objStruct.Field.IsInterfaceMap() {
 			// InterfaceMapLoader的特殊加载接口放在obj上(一般是组件上),而不是field上
 			if interfaceMapLoader, ok := obj.(InterfaceMapLoader); ok {
-				GetLogger().Debug("InterfaceMapLoader %v", objStruct.Field.Name)
+				glog.Debug("InterfaceMapLoader", "field", objStruct.Field.Name)
 				return interfaceMapLoader.LoadFromBytesMap(sourceData)
 			}
 		}
 		saveable, saveableField := objStruct.GetSingleSaveable(obj)
 		if saveable == nil {
-			GetLogger().Error("LoadObjData %v Err:obj not a saveable", objStruct.Field.Name)
+			glog.Error("LoadObjData obj not a saveable", "field", objStruct.Field.Name)
 			return ErrNotSaveable
 		}
 		err := loadField(saveable, sourceData, saveableField)
 		if err != nil {
-			GetLogger().Error("loadFieldError:%v fieldName:%v", err.Error(), saveableField.Name)
+			glog.Error("loadFieldError", "err", err.Error(), "fieldName", saveableField.Name)
 		}
 		return err
 	} else {
@@ -94,29 +94,29 @@ func LoadObjData(obj any, sourceData interface{}) error {
 		for childIndex, childStruct := range objStruct.Children {
 			sourceFieldVal := GetFieldValue(sourceVal, childStruct.Name)
 			if !sourceFieldVal.IsValid() {
-				GetLogger().Debug("sourceFieldVal not exists:%v", childStruct.Name)
+				glog.Debug("sourceFieldVal not exists", "field", childStruct.Name)
 				continue
 			}
 			// child InterfaceMap特殊处理
 			if childStruct.IsInterfaceMap() {
 				childObj := objVal.Field(childStruct.FieldIndex).Interface()
 				if interfaceMapLoader, ok := childObj.(InterfaceMapLoader); ok {
-					GetLogger().Debug("InterfaceMapLoader %v", childStruct.Name)
+					glog.Debug("InterfaceMapLoader", "field", childStruct.Name)
 					childLoadErr := interfaceMapLoader.LoadFromBytesMap(sourceFieldVal.Interface())
 					if childLoadErr != nil {
-						GetLogger().Error("LoadObjData error field:%v", childStruct.Name)
+						glog.Error("LoadObjData error", "field", childStruct.Name)
 						continue
 					}
 				}
 			}
 			saveable, saveableField := objStruct.GetChildSaveable(obj, childIndex)
 			if saveable == nil {
-				GetLogger().Error("LoadObjData %v Err:field not a saveable", childStruct.Name)
+				glog.Error("LoadObjData field not a saveable", "field", childStruct.Name)
 				continue
 			}
 			childLoadErr := loadField(saveable, sourceFieldVal.Interface(), saveableField)
 			if childLoadErr != nil {
-				GetLogger().Error("LoadObjData error field:%v", saveableField.Name)
+				glog.Error("LoadObjData error", "field", saveableField.Name)
 				continue
 			}
 		}
@@ -134,7 +134,7 @@ func loadFieldBaseType(obj any, field reflect.Value, data any, fieldStruct *Save
 			field.SetInt(dataVal.Int())
 			return nil
 		default:
-			GetLogger().Error("data not a int,fieldName:%v", fieldStruct.Name)
+			glog.Error("data not a int", "fieldName", fieldStruct.Name)
 			return errors.New("type not match")
 		}
 
@@ -144,7 +144,7 @@ func loadFieldBaseType(obj any, field reflect.Value, data any, fieldStruct *Save
 			field.SetUint(dataVal.Uint())
 			return nil
 		default:
-			GetLogger().Error("data not a uint,fieldName:%v", fieldStruct.Name)
+			glog.Error("data not a uint", "fieldName", fieldStruct.Name)
 			return errors.New("type not match")
 		}
 
@@ -154,7 +154,7 @@ func loadFieldBaseType(obj any, field reflect.Value, data any, fieldStruct *Save
 			field.SetBool(dataVal.Bool())
 			return nil
 		default:
-			GetLogger().Error("data not a bool,fieldName:%v", fieldStruct.Name)
+			glog.Error("data not a bool", "fieldName", fieldStruct.Name)
 			return errors.New("type not match")
 		}
 
@@ -164,7 +164,7 @@ func loadFieldBaseType(obj any, field reflect.Value, data any, fieldStruct *Save
 			field.SetFloat(dataVal.Float())
 			return nil
 		default:
-			GetLogger().Error("data not a float,fieldName:%v", fieldStruct.Name)
+			glog.Error("data not a float", "fieldName", fieldStruct.Name)
 			return errors.New("type not match")
 		}
 
@@ -174,7 +174,7 @@ func loadFieldBaseType(obj any, field reflect.Value, data any, fieldStruct *Save
 			field.SetComplex(dataVal.Complex())
 			return nil
 		default:
-			GetLogger().Error("data not a complex,fieldName:%v", fieldStruct.Name)
+			glog.Error("data not a complex", "fieldName", fieldStruct.Name)
 			return errors.New("type not match")
 		}
 
@@ -184,7 +184,7 @@ func loadFieldBaseType(obj any, field reflect.Value, data any, fieldStruct *Save
 			field.SetString(dataVal.String())
 			return nil
 		default:
-			GetLogger().Error("data not a string,fieldName:%v", fieldStruct.Name)
+			glog.Error("data not a string", "fieldName", fieldStruct.Name)
 			return errors.New("type not match")
 		}
 
@@ -204,7 +204,7 @@ func loadFieldProto(obj any, field reflect.Value, data any, fieldStruct *Saveabl
 			//	return errors.New("plain proto field cant deserialize from bytes")
 			//}
 			if dataTyp.Elem().Kind() != reflect.Uint8 {
-				GetLogger().Error("data not []byte,fieldName:%v", fieldStruct.Name)
+				glog.Error("data not []byte", "fieldName", fieldStruct.Name)
 				return errors.New(fmt.Sprintf("data not []byte,fieldName:%v", fieldStruct.Name))
 			}
 			if bytes, ok := data.([]byte); ok {
@@ -213,12 +213,12 @@ func loadFieldProto(obj any, field reflect.Value, data any, fieldStruct *Saveabl
 				}
 				err := proto.Unmarshal(bytes, fieldProtoMessage)
 				if err != nil {
-					GetLogger().Error("%v proto.Unmarshal err:%v", fieldStruct.Name, err.Error())
+					glog.Error("proto.Unmarshal", "field", fieldStruct.Name, "err", err)
 					return err
 				}
 				return nil
 			} else {
-				GetLogger().Error("data cant convert to []byte,fieldName:%v", fieldStruct.Name)
+				glog.Error("data cant convert to []byte", "fieldName", fieldStruct.Name)
 				return errors.New(fmt.Sprintf("data cant convert to []byte,fieldName:%v", fieldStruct.Name))
 			}
 
@@ -227,18 +227,18 @@ func loadFieldProto(obj any, field reflect.Value, data any, fieldStruct *Saveabl
 			dataVal := reflect.ValueOf(data)
 			if dataProtoMessage, ok := dataVal.Interface().(proto.Message); ok {
 				if dataProtoMessage.ProtoReflect().Descriptor() != fieldProtoMessage.ProtoReflect().Descriptor() {
-					GetLogger().Error("descriptor not match,fieldName:%v", fieldStruct.Name)
+					glog.Error("descriptor not match", "fieldName", fieldStruct.Name)
 					return errors.New(fmt.Sprintf("descriptor not match,fieldName:%v", fieldStruct.Name))
 				}
 				proto.Merge(fieldProtoMessage, dataProtoMessage)
 				return nil
 			} else {
-				GetLogger().Error("data not a proto.Message,fieldName:%v", fieldStruct.Name)
+				glog.Error("data not a proto.Message", "fieldName", fieldStruct.Name)
 				return errors.New(fmt.Sprintf("data not a proto.Message,fieldName:%v", fieldStruct.Name))
 			}
 
 		default:
-			GetLogger().Error("unsupported type,fieldName:%v dataType:%v", fieldStruct.Name, dataTyp.Kind())
+			glog.Error("unsupported type", "fieldName", fieldStruct.Name, "dataType", dataTyp.Kind())
 			return ErrUnsupportedType
 		}
 	}
@@ -264,26 +264,26 @@ func loadFieldSlice(obj any, field reflect.Value, data any, fieldStruct *Saveabl
 				// ConvertValueToInterface可能返回nil(如类型不支持或反序列化失败),
 				// reflect.Append传入nil的reflect.Value会panic,因此需要跳过
 				if dataItemInterface == nil {
-					GetLogger().Error("loadFieldSlice skip nil item, index:%v fieldName:%v", i, fieldStruct.Name)
+					glog.Error("loadFieldSlice skip nil item", "index", i, "fieldName", fieldStruct.Name)
 					continue
 				}
 				// append
 				field.Set(reflect.Append(field, reflect.ValueOf(dataItemInterface)))
-				GetLogger().Debug("%v append, fieldElemType:%v dataItemType:%v", fieldStruct.Name, fieldElemType, dataItemType)
+				glog.Debug("append", "field", fieldStruct.Name, "fieldElemType", fieldElemType, "dataItemType", dataItemType)
 			}
 			return nil
 
 		default:
 			// 基础类型
 			if dataTyp.Elem().Kind() != fieldStruct.StructField.Type.Elem().Kind() {
-				GetLogger().Error("unsupported type,fieldName:%v dataElemType:%v", fieldStruct.Name, dataTyp.Elem().Kind())
+				glog.Error("unsupported type", "fieldName", fieldStruct.Name, "dataElemType", dataTyp.Elem().Kind())
 				// 类型不一致,暂时返回错误
 				return ErrSliceElemType
 			}
 			dataVal := reflect.ValueOf(data)
 			// 如果是数组,长度必须一致
 			if fieldStruct.StructField.Type.Kind() == reflect.Array && dataVal.Len() != field.Len() {
-				GetLogger().Error("array len not match,fieldName:%v dataLen:%v", fieldStruct.Name, dataVal.Len())
+				glog.Error("array len not match", "fieldName", fieldStruct.Name, "dataLen", dataVal.Len())
 				return ErrArrayLen
 			}
 			if fieldStruct.StructField.Type.Kind() == reflect.Slice {
@@ -297,7 +297,7 @@ func loadFieldSlice(obj any, field reflect.Value, data any, fieldStruct *Saveabl
 		}
 
 	default:
-		GetLogger().Error("unsupported type,fieldName:%v dataType:%v", fieldStruct.Name, dataTyp.Kind())
+		glog.Error("unsupported type", "fieldName", fieldStruct.Name, "dataType", dataTyp.Kind())
 		return ErrUnsupportedType
 	}
 }
@@ -315,7 +315,7 @@ func loadFieldSlice(obj any, field reflect.Value, data any, fieldStruct *Saveabl
 func loadFieldMap(obj any, field reflect.Value, data any, fieldStruct *SaveableField) error {
 	dataTyp := reflect.TypeOf(data)
 	if dataTyp.Kind() != reflect.Map {
-		GetLogger().Error("unsupported type,fieldName:%v dataType:%v", fieldStruct.Name, dataTyp.Kind())
+		glog.Error("unsupported type", "fieldName", fieldStruct.Name, "dataType", dataTyp.Kind())
 		return errors.New(fmt.Sprintf("data not a map,fieldName:%v", fieldStruct.Name))
 	}
 	dataVal := reflect.ValueOf(data)
@@ -330,7 +330,7 @@ func loadFieldMap(obj any, field reflect.Value, data any, fieldStruct *SaveableF
 		// ConvertValueToInterface可能返回nil(如类型不支持或反序列化失败)
 		// SetMapIndex传入nil Value会静默删除条目而非设置,因此需要跳过
 		if k == nil || v == nil {
-			GetLogger().Error("loadFieldMap skip nil entry, key:%v fieldName:%v", k, fieldStruct.Name)
+			glog.Error("loadFieldMap skip nil entry", "key", k, "fieldName", fieldStruct.Name)
 			continue
 		}
 		field.SetMapIndex(reflect.ValueOf(k), reflect.ValueOf(v))
@@ -346,12 +346,12 @@ func loadFieldStruct(obj any, field reflect.Value, data any, fieldStruct *Saveab
 			if protoMessage, ok := fieldInterface.(proto.Message); ok {
 				err := proto.Unmarshal(bytes, protoMessage)
 				if err != nil {
-					GetLogger().Error("proto.Unmarshal err:%v,fieldName:%v dataType:%v", err, fieldStruct.Name, dataTyp.Kind())
+					glog.Error("proto.Unmarshal", "err", err, "fieldName", fieldStruct.Name, "dataType", dataTyp.Kind())
 				}
 				return err
 			}
 			if _, ok := fieldInterface.(Saveable); ok {
-				GetLogger().Error("saveableField load err,fieldName:%v dataType:%v", fieldStruct.Name, dataTyp.Kind())
+				glog.Error("saveableField load err", "fieldName", fieldStruct.Name, "dataType", dataTyp.Kind())
 			}
 		}
 	}
@@ -362,7 +362,7 @@ func loadFieldStruct(obj any, field reflect.Value, data any, fieldStruct *Saveab
 		//		return LoadData(fieldInterface, data)
 		//	}
 		//}
-		GetLogger().Error("unsupported type,fieldName:%v dataType:%v", fieldStruct.Name, dataTyp.Kind())
+		glog.Error("unsupported type", "fieldName", fieldStruct.Name, "dataType", dataTyp.Kind())
 		return errors.New(fmt.Sprintf("data not a struct,fieldName:%v", fieldStruct.Name))
 	}
 	dataVal := reflect.ValueOf(data)
@@ -373,20 +373,20 @@ func loadFieldStruct(obj any, field reflect.Value, data any, fieldStruct *Saveab
 		}
 		dataFieldVal := dataVal.FieldByName(sf.Name)
 		if !dataFieldVal.IsValid() {
-			GetLogger().Debug("dataFieldVal NotValid fieldName:%v.%v", fieldStruct.Name, sf.Name)
+			glog.Debug("dataFieldVal NotValid", "fieldName", fieldStruct.Name+"."+sf.Name)
 			continue
 		}
 		v := field.Field(i)
 		if !v.IsValid() {
-			GetLogger().Debug("fieldVal NotValid fieldName:%v.%v", fieldStruct.Name, sf.Name)
+			glog.Debug("fieldVal NotValid", "fieldName", fieldStruct.Name+"."+sf.Name)
 			continue
 		}
 		if !v.CanSet() {
-			GetLogger().Debug("fieldVal cant set fieldName:%v.%v", fieldStruct.Name, sf.Name)
+			glog.Debug("fieldVal cant set", "fieldName", fieldStruct.Name+"."+sf.Name)
 			continue
 		}
 		v.Set(dataFieldVal)
-		GetLogger().Debug("fieldVal set fieldName:%v.%v", fieldStruct.Name, sf.Name)
+		glog.Debug("fieldVal set", "fieldName", fieldStruct.Name+"."+sf.Name)
 	}
 	return nil
 }
@@ -494,7 +494,7 @@ func loadFieldFromCache(obj any, kvCache KvCache, cacheKey string, fieldStruct *
 		// string类型的缓存,支持明文保存的基础类型,protobuf,作为整体保存的二进制类型
 		cacheData, err := kvCache.Get(cacheKey)
 		if IsRedisError(err) {
-			GetLogger().Error("Get %v %v err:%v", cacheKey, cacheType, err)
+			glog.Error("Get", "cacheKey", cacheKey, "cacheType", cacheType, "err", err)
 			return true, err
 		}
 		// 把缓存中的值转换成sourceData
@@ -517,10 +517,10 @@ func loadFieldFromCache(obj any, kvCache KvCache, cacheKey string, fieldStruct *
 			// 用json序列化
 			err = json.Unmarshal([]byte(cacheData), fieldInterface)
 			if err != nil {
-				GetLogger().Error("slice json.Unmarshal %v %v err:%v", cacheKey, field.Interface(), err)
+				glog.Error("slice json.Unmarshal", "cacheKey", cacheKey, "field", field.Interface(), "err", err)
 				return true, err
 			}
-			GetLogger().Debug("load slice %v field:%v", cacheKey, fieldStruct.Name)
+			glog.Debug("load slice", "cacheKey", cacheKey, "field", fieldStruct.Name)
 			return true, nil
 
 		default:
@@ -545,10 +545,10 @@ func loadFieldFromCache(obj any, kvCache KvCache, cacheKey string, fieldStruct *
 				}
 			}
 			if IsRedisError(err) {
-				GetLogger().Error("loadInterfaceMapErr %v %v err:%v", cacheKey, cacheType, err)
+				glog.Error("loadInterfaceMapErr", "cacheKey", cacheKey, "cacheType", cacheType, "err", err)
 				return true, err
 			}
-			GetLogger().Debug("load InterfaceMap %v field:%v", cacheKey, fieldStruct.Name)
+			glog.Debug("load InterfaceMap", "cacheKey", cacheKey, "field", fieldStruct.Name)
 		} else {
 			var mapField any
 			switch fieldType.Kind() {
@@ -562,7 +562,7 @@ func loadFieldFromCache(obj any, kvCache KvCache, cacheKey string, fieldStruct *
 			//	if saveableField, ok := fieldInterface.(Saveable); ok {
 			//		mapField, err = getMapField(saveableField)
 			//		if err != nil {
-			//			GetLogger().Error("getMapFieldErr %v %v err:%v", cacheKey, cacheType, err)
+			//			glog.Error("getMapFieldErr", "cacheKey", cacheKey, "cacheType", cacheType, "err", err)
 			//			return true, err
 			//		}
 			//	}
@@ -572,32 +572,32 @@ func loadFieldFromCache(obj any, kvCache KvCache, cacheKey string, fieldStruct *
 			//		if saveableField, ok := fieldInterface.(Saveable); ok {
 			//			mapField, err = getMapField(saveableField)
 			//			if err != nil {
-			//				GetLogger().Error("getMapFieldErr %v %v err:%v", cacheKey, cacheType, err)
+			//				glog.Error("getMapFieldErr", "cacheKey", cacheKey, "cacheType", cacheType, "err", err)
 			//				return true, err
 			//			}
 			//		}
 			//	}
 
 			default:
-				GetLogger().Error("%v unsupport cache type:%v", cacheKey, cacheType)
+				glog.Error("unsupport cache type", "cacheKey", cacheKey, "cacheType", cacheType)
 				return true, errors.New(fmt.Sprintf("%v unsupport cache type:%v", cacheKey, cacheType))
 			}
 			if mapField == nil {
-				GetLogger().Error("%v mapFieldNil cache type:%v", cacheKey, cacheType)
+				glog.Error("mapFieldNil cache type", "cacheKey", cacheKey, "cacheType", cacheType)
 				return true, errors.New(fmt.Sprintf("%v mapFieldNil cache type:%v", cacheKey, cacheType))
 			}
 			// hash -> map[k]v
 			err = kvCache.GetMap(cacheKey, mapField)
 			if IsRedisError(err) {
-				GetLogger().Error("GetMap %v %v err:%v", cacheKey, cacheType, err)
+				glog.Error("GetMap", "cacheKey", cacheKey, "cacheType", cacheType, "err", err)
 				return true, err
 			}
-			GetLogger().Debug("load map %v field:%v", cacheKey, fieldStruct.Name)
+			glog.Debug("load map", "cacheKey", cacheKey, "field", fieldStruct.Name)
 		}
 		return true, nil
 
 	default:
-		GetLogger().Error("%v unsupport cache type:%v", cacheKey, cacheType)
+		glog.Error("unsupport cache type", "cacheKey", cacheKey, "cacheType", cacheType)
 		return true, errors.New(fmt.Sprintf("%v unsupport cache type:%v", cacheKey, cacheType))
 	}
 }
@@ -614,7 +614,7 @@ func LoadFromCache(obj interface{}, kvCache KvCache, cacheKey string, parentObj 
 	if objStruct.IsSingleField() {
 		saveable, saveableField := objStruct.GetSingleSaveable(obj)
 		if saveable == nil {
-			GetLogger().Error("LoadFromCache %v err", cacheKey)
+			glog.Error("LoadFromCache err", "cacheKey", cacheKey)
 			return false, ErrUnsupportedType
 		}
 		return loadFieldFromCache(saveable, kvCache, cacheKey, saveableField, parentObj)
@@ -627,7 +627,7 @@ func LoadFromCache(obj interface{}, kvCache KvCache, cacheKey string, parentObj 
 		for childIndex, childStruct := range objStruct.Children {
 			saveable, saveableField := objStruct.GetChildSaveable(obj, childIndex)
 			if saveable == nil {
-				GetLogger().Error("nil %v", childStruct.Name)
+				glog.Error("nil", "field", childStruct.Name)
 				return true, errors.New(fmt.Sprintf("%v nil", childStruct.Name))
 			}
 			hasCache, err := loadFieldFromCache(saveable, kvCache, cacheKey+"."+childStruct.Name, saveableField, parentObj)
@@ -635,7 +635,7 @@ func LoadFromCache(obj interface{}, kvCache KvCache, cacheKey string, parentObj 
 				continue
 			}
 			if err != nil {
-				GetLogger().Error("LoadFromCache child %v error:%v", cacheKey, err.Error())
+				glog.Error("LoadFromCache child", "cacheKey", cacheKey, "err", err)
 				continue
 			}
 			hasData = true
@@ -657,7 +657,7 @@ func FixEntityDataFromCache(entity Entity, db EntityDb, kvCache KvCache, cacheKe
 			cacheKey := GetEntityComponentCacheKey(cacheKeyPrefix, entityKey, component.GetName())
 			saveable, saveableField := objStruct.GetSingleSaveable(component)
 			if saveable == nil {
-				GetLogger().Error("%v FixEntityDataFromCache %v Err:obj not a saveable", entityKey, objStruct.Field.Name)
+				glog.Error("FixEntityDataFromCache obj not a saveable", "entityKey", entityKey, "field", objStruct.Field.Name)
 				return true
 			}
 			hasCache, err := LoadFromCache(saveable, kvCache, cacheKey, component)
@@ -665,22 +665,22 @@ func FixEntityDataFromCache(entity Entity, db EntityDb, kvCache KvCache, cacheKe
 				return true
 			}
 			if err != nil {
-				GetLogger().Error("LoadFromCache %v error:%v", cacheKey, err.Error())
+				glog.Error("LoadFromCache", "cacheKey", cacheKey, "err", err)
 				return true
 			}
 			saveData, err := getSaveDataOfSaveable(saveable, saveableField, GetComponentSaveName(component))
 			if err != nil {
-				GetLogger().Error("%v Save %v err %v", entityKey, component.GetName(), err.Error())
+				glog.Error("Save", "entityKey", entityKey, "component", component.GetName(), "err", err)
 				return true
 			}
 			saveDbErr := db.SaveComponent(entityKey, GetComponentSaveName(component), saveData)
 			if saveDbErr != nil {
-				GetLogger().Error("%v SaveDb %v err %v", entityKey, GetComponentSaveName(component), saveDbErr.Error())
+				glog.Error("SaveDb", "entityKey", entityKey, "component", component.GetName(), "err", saveDbErr)
 				return true
 			}
-			GetLogger().Info("%v -> %v", cacheKey, GetComponentSaveName(component))
+			glog.Info("cacheKey -> saveName", "cacheKey", cacheKey, "saveName", GetComponentSaveName(component))
 			kvCache.Del(cacheKey)
-			GetLogger().Info("RemoveCache %v", cacheKey)
+			glog.Info("RemoveCache", "cacheKey", cacheKey)
 		} else {
 			objVal := reflect.ValueOf(component)
 			if objVal.Kind() == reflect.Ptr {
@@ -689,7 +689,7 @@ func FixEntityDataFromCache(entity Entity, db EntityDb, kvCache KvCache, cacheKe
 			for childIndex, childStruct := range objStruct.Children {
 				saveable, saveableField := objStruct.GetChildSaveable(component, childIndex)
 				if saveable == nil {
-					GetLogger().Info("%v FixEntityDataFromCache %v.%v:field not a saveable", entityKey, component.GetName(), childStruct.Name)
+					glog.Info("FixEntityDataFromCache field not a saveable", "entityKey", entityKey, "component", component.GetName(), "field", childStruct.Name)
 					continue
 				}
 				var parentObj any
@@ -699,28 +699,28 @@ func FixEntityDataFromCache(entity Entity, db EntityDb, kvCache KvCache, cacheKe
 				cacheKey := GetEntityComponentChildCacheKey(cacheKeyPrefix, entityKey, component.GetName(), childStruct.Name)
 				hasCache, err := LoadFromCache(saveable, kvCache, cacheKey, parentObj)
 				if !hasCache {
-					GetLogger().Info("%v FixEntityDataFromCache %v.%v:field not hasCache", entityKey, component.GetName(), childStruct.Name)
+					glog.Info("FixEntityDataFromCache field not hasCache", "entityKey", entityKey, "component", component.GetName(), "field", childStruct.Name)
 					continue
 				}
 				if err != nil {
-					GetLogger().Error("LoadFromCache %v error:%v", cacheKey, err.Error())
+					glog.Error("LoadFromCache", "cacheKey", cacheKey, "err", err)
 					continue
 				}
-				//GetLogger().Debug("%v", fieldInterface)
+				//glog.Debug("fieldInterface", "value", fieldInterface)
 				saveData, err := getSaveDataOfSaveable(saveable, saveableField, GetComponentSaveName(component))
 				if err != nil {
-					GetLogger().Error("%v Save %v.%v err %v", entityKey, component.GetName(), childStruct.Name, err.Error())
+					glog.Error("Save", "entityKey", entityKey, "component", component.GetName(), "field", childStruct.Name, "err", err)
 					continue
 				}
-				//GetLogger().Debug("%v", saveData)
+				//glog.Debug("saveData", "value", saveData)
 				saveDbErr := db.SaveComponentField(entityKey, GetComponentSaveName(component), childStruct.Name, saveData)
 				if saveDbErr != nil {
-					GetLogger().Error("%v SaveDb %v.%v err %v", entityKey, component.GetName(), childStruct.Name, saveDbErr.Error())
+					glog.Error("SaveDb", "entityKey", entityKey, "component", component.GetName(), "field", childStruct.Name, "err", saveDbErr)
 					continue
 				}
-				GetLogger().Info("%v -> %v.%v", cacheKey, GetComponentSaveName(component), childStruct.Name)
+				glog.Info("cacheKey -> saveName", "cacheKey", cacheKey, "saveName", GetComponentSaveName(component), "field", childStruct.Name)
 				kvCache.Del(cacheKey)
-				GetLogger().Info("RemoveCacheAfterFix %v", cacheKey)
+				glog.Info("RemoveCacheAfterFix", "cacheKey", cacheKey)
 			}
 		}
 		return true
