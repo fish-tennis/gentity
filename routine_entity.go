@@ -2,6 +2,8 @@ package gentity
 
 import (
 	"context"
+	"log/slog"
+	"reflect"
 	"runtime"
 	"sync"
 	"sync/atomic"
@@ -90,7 +92,9 @@ func (this *BaseRoutineEntity) PushMessage(message any) {
 		glog.Warn("PushMessage dropped, entity stopped", "entityId", this.GetId())
 		return
 	}
-	glog.Debug("PushMessage", "message", message)
+	if glog.Enabled(nil, slog.LevelDebug) {
+		glog.Debug("PushMessage", "type", reflect.TypeOf(message).String())
+	}
 	this.messages <- message
 }
 
@@ -104,10 +108,12 @@ func (this *BaseRoutineEntity) TryPushMessage(message any) bool {
 	}
 	select {
 	case this.messages <- message:
-		glog.Debug("TryPushMessage", "message", message)
+		if glog.Enabled(nil, slog.LevelDebug) {
+			glog.Debug("TryPushMessage", "type", reflect.TypeOf(message).String())
+		}
 		return true
 	default:
-		glog.Warn("TryPushMessage failed, channel full", "message", message)
+		glog.Warn("TryPushMessage failed, channel full", "type", reflect.TypeOf(message).String())
 		return false
 	}
 }
@@ -124,10 +130,12 @@ func (this *BaseRoutineEntity) PushMessageTimeout(message any, timeout time.Dura
 	defer timer.Stop()
 	select {
 	case this.messages <- message:
-		glog.Debug("PushMessageTimeout", "message", message)
+		if glog.Enabled(nil, slog.LevelDebug) {
+			glog.Debug("PushMessageTimeout", "type", reflect.TypeOf(message).String())
+		}
 		return true
 	case <-timer.C:
-		glog.Warn("PushMessageTimeout failed, timeout", "message", message)
+		glog.Warn("PushMessageTimeout failed, timeout", "type", reflect.TypeOf(message).String())
 		return false
 	}
 }
