@@ -151,7 +151,7 @@ func (this *MongoCollection) DeleteComponentField(entityKey interface{}, compone
 	for _, name := range fieldName {
 		fieldNames = append(fieldNames, bson.E{Key: componentName + "." + name})
 	}
-	result, updateErr := col.UpdateOne(context.Background(), bson.D{{Key: this.uniqueId, Value: entityKey}},
+	_, updateErr := col.UpdateOne(context.Background(), bson.D{{Key: this.uniqueId, Value: entityKey}},
 		bson.D{{Key: "$unset", Value: fieldNames}})
 	if updateErr != nil {
 		return updateErr
