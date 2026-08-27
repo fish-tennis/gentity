@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
-	"sync/atomic"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -19,14 +18,15 @@ var _ ScriptKvCache = (*RedisCache)(nil)
 // KvCache的redis实现
 type RedisCache struct {
 	redisClient redis.Cmdable
-	// Redis Function库可用状态:见redis_function.go的funcStateXXX
-	// 首次FCALL成功置为可用;探测到不可用(版本低于7.0或库未安装)后回退EVAL
-	functionState atomic.Int32
+	// Redis Function执行器:见redis_function.go
+	// 优先FCALL,不可用(Redis<7.0或库未安装)自动回退EVAL脚本
+	funcRunner *FunctionRunner
 }
 
 func NewRedisCache(redisClient redis.Cmdable) *RedisCache {
 	return &RedisCache{
 		redisClient: redisClient,
+		funcRunner:  NewFunctionRunner(redisClient, functionEvalScripts),
 	}
 }
 

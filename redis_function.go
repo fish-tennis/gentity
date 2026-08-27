@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync/atomic"
 
 	"github.com/redis/go-redis/v9"
 )
@@ -102,7 +103,7 @@ var functionEvalScripts = map[string]*redis.Script{
 	funcHDelFieldsByValue:   luaHDelFieldsByValue,
 }
 
-// Function库可用状态(functionState字段使用)
+// Function库可用状态(FunctionRunner.state使用)
 const (
 	funcStateUnknown     = int32(0) // 未探测
 	funcStateAvailable   = int32(1) // FCALL可用
@@ -125,50 +126,99 @@ func isFunctionsUnavailableError(err error) bool {
 		strings.Contains(msg, "no function library")
 }
 
-// runFunction 执行原子操作:优先FCALL,不可用时回退EVAL脚本
+// FunctionRunner Redis Function执行器:优先FCALL,不可用(Redis<7.0或库未安装)自动回退EVAL脚本
+// 供应用层注册自己的原子函数库使用(gentity内部也用它执行gentity库):
+//
+//	runner := gentity.NewFunctionRunner(client, map[string]*redis.Script{
+//	    "my_func": redis.NewScript(`...lua...`), // FCALL不可用时的等价回退脚本
+//	})
+//	gentity.InstallRedisFunctionLibrary(ctx, client, myLibrarySource) // 可选,安装后走FCALL
+//	runner.Run("my_func", []string{key}, args...)
+//
+// 且回退对调用方完全透明:两条路径的函数体必须等价,keys/args协议一致
+type FunctionRunner struct {
+	client      redis.Cmdable
+	state       atomic.Int32
+	evalScripts map[string]*redis.Script
+}
+
+// NewFunctionRunner 创建函数执行器
+// evalScripts:函数名到EVAL回退脚本的映射
+func NewFunctionRunner(client redis.Cmdable, evalScripts map[string]*redis.Script) *FunctionRunner {
+	return &FunctionRunner{
+		client:      client,
+		evalScripts: evalScripts,
+	}
+}
+
+// Run 执行原子函数:优先FCALL,不可用时回退evalScripts[name]的EVAL脚本
 // keys/args协议与EVAL完全一致
-func (this *RedisCache) runFunction(name string, keys []string, args ...interface{}) (interface{}, error) {
-	if this.functionState.Load() != funcStateUnavailable {
-		res, err := this.redisClient.FCall(context.Background(), name, keys, args...).Result()
+func (this *FunctionRunner) Run(name string, keys []string, args ...interface{}) (interface{}, error) {
+	if this.state.Load() != funcStateUnavailable {
+		res, err := this.client.FCall(context.Background(), name, keys, args...).Result()
 		if err == nil {
-			this.functionState.Store(funcStateAvailable)
+			this.state.Store(funcStateAvailable)
 			return res, nil
 		}
 		if isFunctionsUnavailableError(err) {
 			// Function不可用,此后直接走EVAL,不再重复尝试FCALL
-			this.functionState.Store(funcStateUnavailable)
+			this.state.Store(funcStateUnavailable)
 		} else {
 			return nil, err
 		}
 	}
-	script, ok := functionEvalScripts[name]
+	script, ok := this.evalScripts[name]
 	if !ok {
-		return nil, fmt.Errorf("runFunction: unknown function %v", name)
+		return nil, fmt.Errorf("FunctionRunner.Run: unknown function %v", name)
 	}
-	return script.Run(context.Background(), this.redisClient, keys, args...).Result()
+	return script.Run(context.Background(), this.client, keys, args...).Result()
 }
 
-// InstallFunctions 安装Redis Function库(幂等,REPLACE语义,可用于脚本热更新)
+// MarkAvailable 标记函数库已安装可用
+// 库安装成功后调用,使此前因库缺失降级为EVAL的执行器恢复FCALL路径
+func (this *FunctionRunner) MarkAvailable() {
+	this.state.Store(funcStateAvailable)
+}
+
+// Available 当前是否走FCALL路径(库已安装且探测成功)
+func (this *FunctionRunner) Available() bool {
+	return this.state.Load() == funcStateAvailable
+}
+
+// InstallRedisFunctionLibrary 安装Redis Function库(FUNCTION LOAD REPLACE,幂等,可用于热更新)
+// 集群模式:FUNCTION不会在节点间自动同步,会安装到所有master节点
+// 单机/主从模式:安装到当前连接的节点
+// 库名/函数名只能包含字母/数字/下划线(Redis 7.x限制)
+func InstallRedisFunctionLibrary(ctx context.Context, client redis.Cmdable, librarySource string) error {
+	loadFn := func(ctx context.Context, client *redis.Client) error {
+		return client.FunctionLoadReplace(ctx, librarySource).Err()
+	}
+	switch c := client.(type) {
+	case *redis.Client:
+		return loadFn(ctx, c)
+	case *redis.ClusterClient:
+		return c.ForEachMaster(ctx, loadFn)
+	default:
+		return fmt.Errorf("InstallRedisFunctionLibrary: unsupported redis client type %T", client)
+	}
+}
+
+// runFunction 执行原子操作(委托给FunctionRunner)
+// keys/args协议与EVAL完全一致
+func (this *RedisCache) runFunction(name string, keys []string, args ...interface{}) (interface{}, error) {
+	return this.funcRunner.Run(name, keys, args...)
+}
+
+// InstallFunctions 安装gentity的Redis Function库(幂等,REPLACE语义,可用于脚本热更新)
 // 集群模式:FUNCTION不会在节点间自动同步,会安装到所有master节点
 // 单机/主从模式:安装到当前连接的节点
 // 安装后,原子操作自动从EVAL切换为FCALL;未安装或Redis版本低于7.0时,自动回退EVAL,功能不受影响
 // 建议在应用初始化(如连接Redis后)时调用一次
 func (this *RedisCache) InstallFunctions(ctx context.Context) error {
-	loadFn := func(ctx context.Context, client *redis.Client) error {
-		return client.FunctionLoadReplace(ctx, redisFunctionLibrarySource).Err()
-	}
-	var err error
-	switch client := this.redisClient.(type) {
-	case *redis.Client:
-		err = loadFn(ctx, client)
-	case *redis.ClusterClient:
-		err = client.ForEachMaster(ctx, loadFn)
-	default:
-		return fmt.Errorf("InstallFunctions: unsupported redis client type %T", this.redisClient)
-	}
+	err := InstallRedisFunctionLibrary(ctx, this.redisClient, redisFunctionLibrarySource)
 	if err == nil {
 		// 库已就绪,重置探测状态:此前因库缺失降级为EVAL的实例,恢复FCALL路径
-		this.functionState.Store(funcStateAvailable)
+		this.funcRunner.MarkAvailable()
 	}
 	return err
 }

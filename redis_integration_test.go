@@ -100,8 +100,8 @@ func TestRealRedis_InstallAndFCall(t *testing.T) {
 	}
 
 	// 全部操作走的是FCALL路径
-	if cache.functionState.Load() != funcStateAvailable {
-		t.Fatalf("expected FCALL state, got %v", cache.functionState.Load())
+	if cache.funcRunner.state.Load() != funcStateAvailable {
+		t.Fatalf("expected FCALL state, got %v", cache.funcRunner.state.Load())
 	}
 }
 
@@ -117,7 +117,7 @@ func TestRealRedis_FallbackOnFunctionDelete(t *testing.T) {
 	if _, err := cache.HSetIfAbsentOrEqual("gtest:lock", "1", "1"); err != nil {
 		t.Fatal(err)
 	}
-	if cache.functionState.Load() != funcStateAvailable {
+	if cache.funcRunner.state.Load() != funcStateAvailable {
 		t.Fatal("expected available before delete")
 	}
 	// 模拟库丢失:运维执行了FUNCTION FLUSH/FUNCTION DELETE/数据库故障切换等
@@ -128,8 +128,8 @@ func TestRealRedis_FallbackOnFunctionDelete(t *testing.T) {
 	if ok, err := cache.HSetIfAbsentOrEqual("gtest:lock", "2", "2"); err != nil || !ok {
 		t.Fatalf("after library deleted, should fallback to EVAL: ok=%v err=%v", ok, err)
 	}
-	if cache.functionState.Load() != funcStateUnavailable {
-		t.Fatalf("expected unavailable after fallback, got %v", cache.functionState.Load())
+	if cache.funcRunner.state.Load() != funcStateUnavailable {
+		t.Fatalf("expected unavailable after fallback, got %v", cache.funcRunner.state.Load())
 	}
 	// EVAL路径下其余方法仍正常
 	if ok, _ := cache.HDelIfValueEqual("gtest:lock", "2", "2"); !ok {
@@ -151,15 +151,15 @@ func TestRealRedis_ReinstallRestoresFCall(t *testing.T) {
 	if _, err := cache.HSetIfAbsentOrEqual("gtest:lock", "1", "1"); err != nil {
 		t.Fatal(err)
 	}
-	if cache.functionState.Load() != funcStateUnavailable {
+	if cache.funcRunner.state.Load() != funcStateUnavailable {
 		t.Fatal("expected unavailable")
 	}
 	// 重新安装成功后,应恢复FCALL
 	if err := cache.InstallFunctions(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if cache.functionState.Load() != funcStateAvailable {
-		t.Fatalf("expected available after reinstall, got %v", cache.functionState.Load())
+	if cache.funcRunner.state.Load() != funcStateAvailable {
+		t.Fatalf("expected available after reinstall, got %v", cache.funcRunner.state.Load())
 	}
 	if ok, err := cache.HSetIfAbsentOrEqual("gtest:lock", "3", "3"); err != nil || !ok {
 		t.Fatalf("FCALL after reinstall: ok=%v err=%v", ok, err)
@@ -292,7 +292,7 @@ func TestRealRedis_EvalFcallConsistency(t *testing.T) {
 
 	// 强制EVAL路径的实例
 	evalCache := NewRedisCache(cache.redisClient)
-	evalCache.functionState.Store(funcStateUnavailable)
+	evalCache.funcRunner.state.Store(funcStateUnavailable)
 
 	keyA, keyB := "gtest:cons:a", "gtest:cons:b"
 	steps := []func(c ScriptKvCache, key string) error{
@@ -330,10 +330,10 @@ func TestRealRedis_EvalFcallConsistency(t *testing.T) {
 		}
 	}
 	// 路径断言
-	if cache.functionState.Load() != funcStateAvailable {
+	if cache.funcRunner.state.Load() != funcStateAvailable {
 		t.Fatal("expected FCALL for cache A")
 	}
-	if evalCache.functionState.Load() != funcStateUnavailable {
+	if evalCache.funcRunner.state.Load() != funcStateUnavailable {
 		t.Fatal("expected EVAL for cache B")
 	}
 }

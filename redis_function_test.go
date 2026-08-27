@@ -38,7 +38,7 @@ func TestInstallFunctionsAndFCall(t *testing.T) {
 		t.Fatal("value match should del")
 	}
 	// 状态检查:安装成功则FCALL可用,否则标记为不可用(回退EVAL)
-	state := cache.functionState.Load()
+	state := cache.funcRunner.state.Load()
 	if err == nil && state != funcStateAvailable {
 		t.Fatalf("expected funcStateAvailable, got %v", state)
 	}
