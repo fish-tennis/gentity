@@ -195,7 +195,10 @@ func IsRedisError(redisError error) bool {
 // 使用redis.NewScript:优先EVALSHA,脚本未缓存时自动降级EVAL并重试
 
 var (
-	// 原子的 DEL + 批量HSET
+	// 原子的 DEL + 批量HSET,等价于 Del(key)+SetMap(key,m)
+	// KEYS[1]: 目标hash key
+	// ARGV: 偶数个,[field1,value1,field2,value2,...]
+	// 返回: 恒为1
 	luaReplaceMap = redis.NewScript(`
 redis.call('DEL', KEYS[1])
 for i = 1, #ARGV, 2 do
@@ -204,7 +207,12 @@ end
 return 1
 `)
 
-	// ARGV[1]=写入字段数N;ARGV[2]..ARGV[2N+1]为field/value对;ARGV[2N+2]..ARGV末尾为待删除field
+	// 原子增量更新map:批量HSET与批量HDEL在同一脚本中执行,等价于 SetMap+HDel
+	// KEYS[1]: 目标hash key
+	// ARGV[1]: 写入的field数量N(用于区分后面的field/value对与待删除field)
+	// ARGV[2]..ARGV[2N+1]: N个field/value对
+	// ARGV[2N+2]..ARGV末尾: 待删除的field列表(可为空)
+	// 返回: 恒为1
 	luaUpdateMap = redis.NewScript(`
 local n = tonumber(ARGV[1])
 for i = 1, n do
@@ -216,7 +224,12 @@ end
 return 1
 `)
 
-	// field不存在或值等于指定值时写入(用于可重入的分布式锁)
+	// 条件写入hash field:field不存在或当前值等于指定值时才写入
+	// 用于可重入的分布式锁:服务器重启后可重新获取自己上次崩溃残留的锁
+	// KEYS[1]: 目标hash key
+	// ARGV[1]: field名
+	// ARGV[2]: 要写入的值(锁持有者标识)
+	// 返回: 1=写入成功(含重入) 0=field已被其他值持有
 	luaHSetIfAbsentOrEqual = redis.NewScript(`
 local cur = redis.call('HGET', KEYS[1], ARGV[1])
 if cur == false or cur == ARGV[2] then
@@ -226,7 +239,12 @@ end
 return 0
 `)
 
-	// field的值等于指定值时才删除
+	// 条件删除hash field:仅当field的值等于期望值时才删除
+	// 防止基于旧状态的无条件删除误删其他持有者(如新持有者)已更新的数据
+	// KEYS[1]: 目标hash key
+	// ARGV[1]: field名
+	// ARGV[2]: 期望值(仅当前值等于它才删除)
+	// 返回: 1=已删除 0=值不匹配未删除
 	luaHDelIfValueEqual = redis.NewScript(`
 if redis.call('HGET', KEYS[1], ARGV[1]) == ARGV[2] then
 	return redis.call('HDEL', KEYS[1], ARGV[1])
@@ -234,7 +252,11 @@ end
 return 0
 `)
 
-	// 删除所有值等于指定值的field
+	// 删除所有值等于指定值的field:等价于 HGetAll+条件HDel 的原子执行
+	// 消除快照与删除之间其他持有者重新写入后被误删的竞态
+	// KEYS[1]: 目标hash key
+	// ARGV[1]: 期望值(值等于它的field才会被删除)
+	// 返回: 删除的field数量
 	luaHDelFieldsByValue = redis.NewScript(`
 local all = redis.call('HGETALL', KEYS[1])
 local n = 0

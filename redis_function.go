@@ -25,6 +25,10 @@ import (
 // 函数体与redis_cache.go中的EVAL回退脚本保持一致,修改时需同步修改两处
 const redisFunctionLibrarySource = `#!lua name=gentity
 
+-- 原子替换map:DEL旧数据后批量HSET新数据,等价于 Del(key)+SetMap(key,m)
+-- keys[1]: 目标hash key
+-- args: 偶数个,[field1,value1,field2,value2,...]
+-- 返回: 恒为1
 local function replace_map(keys, args)
 	redis.call('DEL', keys[1])
 	local n = #args
@@ -36,6 +40,12 @@ local function replace_map(keys, args)
 	return 1
 end
 
+-- 原子增量更新map:批量HSET与批量HDEL在同一原子操作中执行,等价于 SetMap+HDel
+-- keys[1]: 目标hash key
+-- args[1]: 写入的field数量N(用于区分后面的field/value对与待删除field)
+-- args[2]..args[2N+1]: N个field/value对
+-- args[2N+2]..args末尾: 待删除的field列表(可为空)
+-- 返回: 恒为1
 local function update_map(keys, args)
 	local n = tonumber(args[1])
 	for i = 1, n do
@@ -47,6 +57,12 @@ local function update_map(keys, args)
 	return 1
 end
 
+-- 条件写入hash field:field不存在或当前值等于指定值时才写入
+-- 用于可重入的分布式锁:服务器重启后可重新获取自己上次崩溃残留的锁
+-- keys[1]: 目标hash key
+-- args[1]: field名
+-- args[2]: 要写入的值(锁持有者标识)
+-- 返回: 1=写入成功(含重入) 0=field已被其他值持有
 local function hset_if_absent_or_equal(keys, args)
 	local cur = redis.call('HGET', keys[1], args[1])
 	if cur == false or cur == args[2] then
@@ -56,6 +72,12 @@ local function hset_if_absent_or_equal(keys, args)
 	return 0
 end
 
+-- 条件删除hash field:仅当field的值等于期望值时才删除
+-- 防止基于旧状态的无条件删除误删其他持有者(如新持有者)已更新的数据
+-- keys[1]: 目标hash key
+-- args[1]: field名
+-- args[2]: 期望值(仅当前值等于它才删除)
+-- 返回: 1=已删除 0=值不匹配未删除
 local function hdel_if_value_equal(keys, args)
 	if redis.call('HGET', keys[1], args[1]) == args[2] then
 		return redis.call('HDEL', keys[1], args[1])
@@ -63,6 +85,11 @@ local function hdel_if_value_equal(keys, args)
 	return 0
 end
 
+-- 删除所有值等于指定值的field:等价于 HGetAll+条件HDel 的原子执行
+-- 消除快照与删除之间其他持有者重新写入后被误删的竞态
+-- keys[1]: 目标hash key
+-- args[1]: 期望值(值等于它的field才会被删除)
+-- 返回: 删除的field数量
 local function hdel_fields_by_value(keys, args)
 	local all = redis.call('HGETALL', keys[1])
 	local n = 0
