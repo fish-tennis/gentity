@@ -1,0 +1,163 @@
+package gentity
+
+import (
+	"context"
+	"fmt"
+	"strings"
+
+	"github.com/redis/go-redis/v9"
+)
+
+// ==================== Redis Function ====================
+// Redis 7.0+支持FUNCTION命令,脚本持久化在服务器端(RDB/AOF),具备版本管理能力
+// 相比EVAL/EVALSHA的优势:
+//   - 脚本随服务器持久化,重启/SCRIPT FLUSH后不丢失,无需每次进程启动重新分发
+//   - FUNCTION LIST可审计线上运行的脚本版本,LOAD REPLACE支持热更新
+//   - FCALL的错误信息携带函数名,排查问题更直观
+//
+// 注意:Redis Cluster中FUNCTION不会在节点间自动同步,需向所有master节点安装(见InstallFunctions)
+// 兼容性设计:FCALL失败(版本低于7.0或库未安装)时自动回退到等价的EVAL脚本,功能完全一致,
+// 因此InstallFunctions是可选的增强操作,未调用也不影响任何功能
+
+// 函数库源码
+// 所有函数均只操作KEYS[1]单个key,天然满足Redis Cluster"所有key在同一slot"的限制
+// 函数体与redis_cache.go中的EVAL回退脚本保持一致,修改时需同步修改两处
+const redisFunctionLibrarySource = `#!lua name=gentity
+
+local function replace_map(keys, args)
+	redis.call('DEL', keys[1])
+	local n = #args
+	local i = 1
+	while i <= n do
+		redis.call('HSET', keys[1], args[i], args[i+1])
+		i = i + 2
+	end
+	return 1
+end
+
+local function update_map(keys, args)
+	local n = tonumber(args[1])
+	for i = 1, n do
+		redis.call('HSET', keys[1], args[2*i], args[2*i+1])
+	end
+	for i = 2*n+2, #args do
+		redis.call('HDEL', keys[1], args[i])
+	end
+	return 1
+end
+
+local function hset_if_absent_or_equal(keys, args)
+	local cur = redis.call('HGET', keys[1], args[1])
+	if cur == false or cur == args[2] then
+		redis.call('HSET', keys[1], args[1], args[2])
+		return 1
+	end
+	return 0
+end
+
+local function hdel_if_value_equal(keys, args)
+	if redis.call('HGET', keys[1], args[1]) == args[2] then
+		return redis.call('HDEL', keys[1], args[1])
+	end
+	return 0
+end
+
+local function hdel_fields_by_value(keys, args)
+	local all = redis.call('HGETALL', keys[1])
+	local n = 0
+	for i = 1, #all, 2 do
+		if all[i+1] == args[1] then
+			redis.call('HDEL', keys[1], all[i])
+			n = n + 1
+		end
+	end
+	return n
+end
+
+redis.register_function('gentity.replace_map', replace_map)
+redis.register_function('gentity.update_map', update_map)
+redis.register_function('gentity.hset_if_absent_or_equal', hset_if_absent_or_equal)
+redis.register_function('gentity.hdel_if_value_equal', hdel_if_value_equal)
+redis.register_function('gentity.hdel_fields_by_value', hdel_fields_by_value)
+`
+
+// 函数库中的函数名
+const (
+	funcReplaceMap          = "gentity.replace_map"
+	funcUpdateMap           = "gentity.update_map"
+	funcHSetIfAbsentOrEqual = "gentity.hset_if_absent_or_equal"
+	funcHDelIfValueEqual    = "gentity.hdel_if_value_equal"
+	funcHDelFieldsByValue   = "gentity.hdel_fields_by_value"
+)
+
+// Function不可用时回退到等价的EVAL脚本
+var functionEvalScripts = map[string]*redis.Script{
+	funcReplaceMap:          luaReplaceMap,
+	funcUpdateMap:           luaUpdateMap,
+	funcHSetIfAbsentOrEqual: luaHSetIfAbsentOrEqual,
+	funcHDelIfValueEqual:    luaHDelIfValueEqual,
+	funcHDelFieldsByValue:   luaHDelFieldsByValue,
+}
+
+// Function库可用状态(functionState字段使用)
+const (
+	funcStateUnknown     = int32(0) // 未探测
+	funcStateAvailable   = int32(1) // FCALL可用
+	funcStateUnavailable = int32(2) // 不可用(版本低于7.0或库未安装),回退EVAL
+)
+
+// isFunctionsUnavailableError 判断错误是否表示"Function能力不可用"
+// - Redis < 7.0: ERR unknown command 'FCALL'
+// - 库未安装: ERR No function named / No function library
+// 其余错误(如集群跨slot)是真实的调用错误,应返回给调用方而不是静默回退
+func isFunctionsUnavailableError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "unknown command") ||
+		strings.Contains(msg, "no function named") ||
+		strings.Contains(msg, "no function library")
+}
+
+// runFunction 执行原子操作:优先FCALL,不可用时回退EVAL脚本
+// keys/args协议与EVAL完全一致
+func (this *RedisCache) runFunction(name string, keys []string, args ...interface{}) (interface{}, error) {
+	if this.functionState.Load() != funcStateUnavailable {
+		res, err := this.redisClient.FCall(context.Background(), name, keys, args...).Result()
+		if err == nil {
+			this.functionState.Store(funcStateAvailable)
+			return res, nil
+		}
+		if isFunctionsUnavailableError(err) {
+			// Function不可用,此后直接走EVAL,不再重复尝试FCALL
+			this.functionState.Store(funcStateUnavailable)
+		} else {
+			return nil, err
+		}
+	}
+	script, ok := functionEvalScripts[name]
+	if !ok {
+		return nil, fmt.Errorf("runFunction: unknown function %v", name)
+	}
+	return script.Run(context.Background(), this.redisClient, keys, args...).Result()
+}
+
+// InstallFunctions 安装Redis Function库(幂等,REPLACE语义,可用于脚本热更新)
+// 集群模式:FUNCTION不会在节点间自动同步,会安装到所有master节点
+// 单机/主从模式:安装到当前连接的节点
+// 安装后,原子操作自动从EVAL切换为FCALL;未安装或Redis版本低于7.0时,自动回退EVAL,功能不受影响
+// 建议在应用初始化(如连接Redis后)时调用一次
+func (this *RedisCache) InstallFunctions(ctx context.Context) error {
+	loadFn := func(ctx context.Context, client *redis.Client) error {
+		return client.FunctionLoadReplace(ctx, redisFunctionLibrarySource).Err()
+	}
+	switch client := this.redisClient.(type) {
+	case *redis.Client:
+		return loadFn(ctx, client)
+	case *redis.ClusterClient:
+		return client.ForEachMaster(ctx, loadFn)
+	default:
+		return fmt.Errorf("InstallFunctions: unsupported redis client type %T", this.redisClient)
+	}
+}

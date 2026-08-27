@@ -4,10 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
+	"sync/atomic"
+	"time"
+
 	"github.com/redis/go-redis/v9"
 	"google.golang.org/protobuf/proto"
-	"reflect"
-	"time"
 )
 
 // https://github.com/uber-go/guide/blob/master/style.md#verify-interface-compliance
@@ -17,6 +19,9 @@ var _ ScriptKvCache = (*RedisCache)(nil)
 // KvCache的redis实现
 type RedisCache struct {
 	redisClient redis.Cmdable
+	// Redis Function库可用状态:见redis_function.go的funcStateXXX
+	// 首次FCALL成功置为可用;探测到不可用(版本低于7.0或库未安装)后回退EVAL
+	functionState atomic.Int32
 }
 
 func NewRedisCache(redisClient redis.Cmdable) *RedisCache {
@@ -84,9 +89,16 @@ func (this *RedisCache) GetMap(key string, m interface{}) error {
 	if IsRedisError(err) {
 		return err
 	}
+	return fillMapFromStringMap(m, strMap)
+}
+
+// fillMapFromStringMap 把map[string]string填充到类型明确的map(反射转换)
+// m必须是一个类型明确有效的map,key/value类型由ConvertStringToRealType支持
+// (int/uint/float/bool/string/[]byte/proto.Message等)
+func fillMapFromStringMap(m interface{}, strMap map[string]string) error {
 	val := reflect.ValueOf(m)
 	if val.Kind() != reflect.Map {
-		return errors.New(fmt.Sprintf("unsupport type kind:%v key:%v", val.Kind(), key))
+		return errors.New(fmt.Sprintf("unsupport type kind:%v", val.Kind()))
 	}
 	typ := reflect.TypeOf(m)
 	keyType := typ.Key()
@@ -250,7 +262,7 @@ func (this *RedisCache) AtomicReplaceMap(key string, m interface{}) error {
 	for k, v := range cacheData {
 		args = append(args, k, v)
 	}
-	_, err = luaReplaceMap.Run(context.Background(), this.redisClient, []string{key}, args...).Result()
+	_, err = this.runFunction(funcReplaceMap, []string{key}, args...)
 	return ignoreNilError(err)
 }
 
@@ -274,7 +286,7 @@ func (this *RedisCache) AtomicUpdateMap(key string, setMap interface{}, delField
 	for _, field := range delFields {
 		args = append(args, field)
 	}
-	_, err := luaUpdateMap.Run(context.Background(), this.redisClient, []string{key}, args...).Result()
+	_, err := this.runFunction(funcUpdateMap, []string{key}, args...)
 	return ignoreNilError(err)
 }
 
@@ -288,7 +300,7 @@ func scriptIntResult(res interface{}) int64 {
 }
 
 func (this *RedisCache) HSetIfAbsentOrEqual(key, field string, value interface{}) (bool, error) {
-	res, err := luaHSetIfAbsentOrEqual.Run(context.Background(), this.redisClient, []string{key}, field, value).Result()
+	res, err := this.runFunction(funcHSetIfAbsentOrEqual, []string{key}, field, value)
 	if err := ignoreNilError(err); err != nil {
 		return false, err
 	}
@@ -296,7 +308,7 @@ func (this *RedisCache) HSetIfAbsentOrEqual(key, field string, value interface{}
 }
 
 func (this *RedisCache) HDelIfValueEqual(key, field string, expectValue interface{}) (bool, error) {
-	res, err := luaHDelIfValueEqual.Run(context.Background(), this.redisClient, []string{key}, field, expectValue).Result()
+	res, err := this.runFunction(funcHDelIfValueEqual, []string{key}, field, expectValue)
 	if err := ignoreNilError(err); err != nil {
 		return false, err
 	}
@@ -304,7 +316,7 @@ func (this *RedisCache) HDelIfValueEqual(key, field string, expectValue interfac
 }
 
 func (this *RedisCache) HDelFieldsByValue(key string, value interface{}) (int64, error) {
-	res, err := luaHDelFieldsByValue.Run(context.Background(), this.redisClient, []string{key}, value).Result()
+	res, err := this.runFunction(funcHDelFieldsByValue, []string{key}, value)
 	if err := ignoreNilError(err); err != nil {
 		return 0, err
 	}

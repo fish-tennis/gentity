@@ -556,28 +556,6 @@ func loadFieldFromCache(obj any, kvCache KvCache, cacheKey string, fieldStruct *
 				// 普通map
 				mapField = field.Interface()
 
-			//case reflect.Ptr:
-			//	// 可能是MapData
-			//	fieldInterface := field.Interface()
-			//	if saveableField, ok := fieldInterface.(Saveable); ok {
-			//		mapField, err = getMapField(saveableField)
-			//		if err != nil {
-			//			glog.Error("getMapFieldErr", "cacheKey", cacheKey, "cacheType", cacheType, "err", err)
-			//			return true, err
-			//		}
-			//	}
-			//
-			//case reflect.Struct:
-			//	if fieldInterface := convertStructToInterface(field); fieldInterface != nil {
-			//		if saveableField, ok := fieldInterface.(Saveable); ok {
-			//			mapField, err = getMapField(saveableField)
-			//			if err != nil {
-			//				glog.Error("getMapFieldErr", "cacheKey", cacheKey, "cacheType", cacheType, "err", err)
-			//				return true, err
-			//			}
-			//		}
-			//	}
-
 			default:
 				glog.Error("unsupport cache type", "cacheKey", cacheKey, "cacheType", cacheType)
 				return true, errors.New(fmt.Sprintf("%v unsupport cache type:%v", cacheKey, cacheType))
@@ -646,6 +624,14 @@ func LoadFromCache(obj interface{}, kvCache KvCache, cacheKey string, parentObj 
 
 // 根据缓存数据,修复数据
 // 如:服务器crash时,缓存数据没来得及保存到数据库,服务器重启后读取缓存中的数据,保存到数据库,防止数据回档
+//
+// 设计说明(勿改):这里刻意采用"读取缓存->写数据库->写库成功后才删除缓存"的分步顺序,
+// 不要"优化"成GETDEL/AtomicGetDel之类的原子取删语义,原因:
+//  1. 修复失败时缓存数据必须原样保留,这样下次重启可以重试,这是防止玩家数据丢失的最后一道防线;
+//     原子取出后失败需要回写,而回写本身也可能失败,反而引入新的数据丢失风险
+//  2. 修复流程不存在"读取与删除之间缓存被并发写入"的竞态:
+//     修复在服务器启动阶段执行(实体的业务协程尚未启动),且分布式锁(DistributeLock)
+//     保证了同一实体同时只会在一台服务器上被加载
 func FixEntityDataFromCache(entity Entity, db EntityDb, kvCache KvCache, cacheKeyPrefix string, entityKey interface{}) {
 	entity.RangeComponent(func(component Component) bool {
 		objStruct := GetObjSaveableStruct(component)

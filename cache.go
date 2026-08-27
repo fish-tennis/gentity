@@ -19,7 +19,7 @@ type KvCache interface {
 	SetNX(key string, value interface{}, expiration time.Duration) (bool, error)
 
 	// redis Del
-	Del(key ...string) (int64,error)
+	Del(key ...string) (int64, error)
 
 	// redis Type
 	Type(key string) (string, error)
@@ -42,20 +42,20 @@ type KvCache interface {
 	SetMap(key string, m interface{}) error
 
 	// redis HGetAll
-	HGetAll(key string) (map[string]string,error)
+	HGetAll(key string) (map[string]string, error)
 
 	// redis HSet
 	// HSet accepts values in following formats:
 	//   - HSet("myhash", "key1", "value1", "key2", "value2")
 	//   - HSet("myhash", []string{"key1", "value1", "key2", "value2"})
 	//   - HSet("myhash", map[string]interface{}{"key1": "value1", "key2": "value2"})
-	HSet(key string, values ...interface{}) (int64,error)
+	HSet(key string, values ...interface{}) (int64, error)
 
 	// redis HSetNX
-	HSetNX(key, field string, value interface{}) (bool,error)
+	HSetNX(key, field string, value interface{}) (bool, error)
 
 	// 删除map的项
-	HDel(key string, fields ...string) (int64,error)
+	HDel(key string, fields ...string) (int64, error)
 
 	// 缓存数据加载到proto.Message
 	GetProto(key string, value proto.Message) error
