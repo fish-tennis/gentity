@@ -130,8 +130,26 @@ func (this *DistributedEntityMgr) LoadEntity(entityId int64, entityData interfac
 // 分布式锁Lock
 // redis实现的分布式锁,保证同一个实体的逻辑处理协程只会在一个服务器上
 func (this *DistributedEntityMgr) DistributeLock(entityId int64) bool {
-	// redis实现的分布式锁,保证同一个实体的逻辑处理协程只会在一个服务器上
 	// 锁的是实体id和服务器id的对应关系
+	field := util.Itoa(entityId)
+	owner := util.Itoa(GetApplication().GetId())
+	if scriptCache, ok := this.cache.(ScriptKvCache); ok {
+		// Lua脚本原子执行:field不存在或仍是本服持有时写入
+		// HSetNX无法识别本服崩溃后的残留锁,会导致重启后无法重新加载自己的实体
+		lockOK, err := scriptCache.HSetIfAbsentOrEqual(this.distributedLockName, field, owner)
+		if IsRedisError(err) {
+			glog.Error("DistributeLock", "lockName", this.distributedLockName, "entityId", entityId, "err", err)
+			return false
+		}
+		if !lockOK {
+			glog.Error("DistributeLock failed", "lockName", this.distributedLockName, "entityId", entityId)
+			return false
+		}
+		glog.Debug("DistributeLock", "lockName", this.distributedLockName, "entityId", entityId)
+		return true
+	}
+	// 回退:不支持脚本的缓存系统,使用HSetNX
+	// (无法识别本服崩溃残留的锁,需依赖DeleteDistributeLocks在启动时清理)
 	lockOK, err := this.cache.HSetNX(this.distributedLockName, util.Itoa(entityId), GetApplication().GetId())
 	if IsRedisError(err) {
 		glog.Error("DistributeLock", "lockName", this.distributedLockName, "entityId", entityId, "err", err)
@@ -147,12 +165,40 @@ func (this *DistributedEntityMgr) DistributeLock(entityId int64) bool {
 
 // 分布式锁UnLock
 func (this *DistributedEntityMgr) DistributeUnlock(entityId int64) {
+	field := util.Itoa(entityId)
+	owner := util.Itoa(GetApplication().GetId())
+	if scriptCache, ok := this.cache.(ScriptKvCache); ok {
+		// Lua脚本原子执行:仅当锁仍由本服持有时才删除
+		// 无条件HDEL存在误删风险:本服的解锁请求因网络延迟晚到时,
+		// field可能已被其他服务器重新加锁,无条件删除会破坏对方的锁,
+		// 导致同一个实体在两台服务器上同时存在
+		_, err := scriptCache.HDelIfValueEqual(this.distributedLockName, field, owner)
+		if IsRedisError(err) {
+			glog.Error("DistributeUnlock", "lockName", this.distributedLockName, "entityId", entityId, "err", err)
+		}
+		glog.Debug("DistributeUnlock", "lockName", this.distributedLockName, "entityId", entityId)
+		return
+	}
 	this.cache.HDel(this.distributedLockName, util.Itoa(entityId))
 	glog.Debug("DistributeUnlock", "lockName", this.distributedLockName, "entityId", entityId)
 }
 
 // 删除跟本服关联的分布式锁
 func (this *DistributedEntityMgr) DeleteDistributeLocks() {
+	owner := util.Itoa(GetApplication().GetId())
+	if scriptCache, ok := this.cache.(ScriptKvCache); ok {
+		// Lua脚本原子执行 HGetAll+条件HDel
+		// 分步执行时,HGetAll读到的快照与HDel之间,本服可能已释放某field且被其他服务器重新加锁,
+		// 无条件HDel会误删其他服务器的新锁,导致同一个实体在两台服务器上同时存在
+		deleted, err := scriptCache.HDelFieldsByValue(this.distributedLockName, owner)
+		if IsRedisError(err) {
+			glog.Error("DeleteDistributeLocks", "lockName", this.distributedLockName, "err", err)
+			return
+		}
+		glog.Debug("DeleteDistributeLocks", "lockName", this.distributedLockName, "deleted", deleted)
+		return
+	}
+	// 回退:HGetAll快照+逐个HDel(存在快照竞态,仅用于不支持脚本的缓存系统)
 	kv, err := this.cache.HGetAll(this.distributedLockName)
 	if IsRedisError(err) {
 		glog.Error("DeleteDistributeLocks", "lockName", this.distributedLockName, "err", err)

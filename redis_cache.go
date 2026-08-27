@@ -12,6 +12,7 @@ import (
 
 // https://github.com/uber-go/guide/blob/master/style.md#verify-interface-compliance
 var _ KvCache = (*RedisCache)(nil)
+var _ ScriptKvCache = (*RedisCache)(nil)
 
 // KvCache的redis实现
 type RedisCache struct {
@@ -101,25 +102,38 @@ func (this *RedisCache) GetMap(key string, m interface{}) error {
 
 // map -> redis hash
 func (this *RedisCache) SetMap(k string, m interface{}) error {
-	cacheData := make(map[string]interface{})
-	val := reflect.ValueOf(m)
-	it := val.MapRange()
-	for it.Next() {
-		key, err := convertValueToString(it.Key())
-		if err != nil {
-			return err
-		}
-		value, err := convertValueToStringOrInterface(it.Value())
-		if err != nil {
-			return err
-		}
-		cacheData[key] = value
+	cacheData, err := convertMapToStringMap(m)
+	if err != nil {
+		return err
 	}
 	if len(cacheData) == 0 {
 		return nil
 	}
-	_, err := this.redisClient.HSet(context.Background(), k, cacheData).Result()
+	_, err = this.redisClient.HSet(context.Background(), k, cacheData).Result()
 	return ignoreNilError(err)
+}
+
+// convertMapToStringMap 把map转换成redis hash格式的map[string]interface{}
+// map的key/value类型支持:string,int,uint,float,bool,complex,proto.Message
+func convertMapToStringMap(m interface{}) (map[string]interface{}, error) {
+	cacheData := make(map[string]interface{})
+	val := reflect.ValueOf(m)
+	if val.Kind() != reflect.Map {
+		return nil, errors.New(fmt.Sprintf("unsupport type kind:%v", val.Kind()))
+	}
+	it := val.MapRange()
+	for it.Next() {
+		key, err := convertValueToString(it.Key())
+		if err != nil {
+			return nil, err
+		}
+		value, err := convertValueToStringOrInterface(it.Value())
+		if err != nil {
+			return nil, err
+		}
+		cacheData[key] = value
+	}
+	return cacheData, nil
 }
 
 func (this *RedisCache) HGetAll(key string) (map[string]string, error) {
@@ -161,4 +175,138 @@ func IsRedisError(redisError error) bool {
 		return true
 	}
 	return false
+}
+
+// ==================== Lua脚本原子操作 ====================
+// 集群不支持事务(MULTI/EXEC跨节点),但同一节点上的Lua脚本是原子执行的,可达到事务的效果
+// 以下脚本均只操作KEYS[1]这一个key,天然满足Redis Cluster"所有key在同一个slot"的限制
+// 使用redis.NewScript:优先EVALSHA,脚本未缓存时自动降级EVAL并重试
+
+var (
+	// 原子的 DEL + 批量HSET
+	luaReplaceMap = redis.NewScript(`
+redis.call('DEL', KEYS[1])
+for i = 1, #ARGV, 2 do
+	redis.call('HSET', KEYS[1], ARGV[i], ARGV[i+1])
+end
+return 1
+`)
+
+	// ARGV[1]=写入字段数N;ARGV[2]..ARGV[2N+1]为field/value对;ARGV[2N+2]..ARGV末尾为待删除field
+	luaUpdateMap = redis.NewScript(`
+local n = tonumber(ARGV[1])
+for i = 1, n do
+	redis.call('HSET', KEYS[1], ARGV[2*i], ARGV[2*i+1])
+end
+for i = 2*n+2, #ARGV do
+	redis.call('HDEL', KEYS[1], ARGV[i])
+end
+return 1
+`)
+
+	// field不存在或值等于指定值时写入(用于可重入的分布式锁)
+	luaHSetIfAbsentOrEqual = redis.NewScript(`
+local cur = redis.call('HGET', KEYS[1], ARGV[1])
+if cur == false or cur == ARGV[2] then
+	redis.call('HSET', KEYS[1], ARGV[1], ARGV[2])
+	return 1
+end
+return 0
+`)
+
+	// field的值等于指定值时才删除
+	luaHDelIfValueEqual = redis.NewScript(`
+if redis.call('HGET', KEYS[1], ARGV[1]) == ARGV[2] then
+	return redis.call('HDEL', KEYS[1], ARGV[1])
+end
+return 0
+`)
+
+	// 删除所有值等于指定值的field
+	luaHDelFieldsByValue = redis.NewScript(`
+local all = redis.call('HGETALL', KEYS[1])
+local n = 0
+for i = 1, #all, 2 do
+	if all[i+1] == ARGV[1] then
+		redis.call('HDEL', KEYS[1], all[i])
+		n = n + 1
+	end
+end
+return n
+`)
+)
+
+func (this *RedisCache) AtomicReplaceMap(key string, m interface{}) error {
+	cacheData, err := convertMapToStringMap(m)
+	if err != nil {
+		return err
+	}
+	if len(cacheData) == 0 {
+		// 空map等价于Del+空写入,即删除旧数据
+		_, err := this.Del(key)
+		return err
+	}
+	args := make([]interface{}, 0, len(cacheData)*2)
+	for k, v := range cacheData {
+		args = append(args, k, v)
+	}
+	_, err = luaReplaceMap.Run(context.Background(), this.redisClient, []string{key}, args...).Result()
+	return ignoreNilError(err)
+}
+
+func (this *RedisCache) AtomicUpdateMap(key string, setMap interface{}, delFields []string) error {
+	var cacheData map[string]interface{}
+	if setMap != nil {
+		var err error
+		cacheData, err = convertMapToStringMap(setMap)
+		if err != nil {
+			return err
+		}
+	}
+	if len(cacheData) == 0 && len(delFields) == 0 {
+		return nil
+	}
+	args := make([]interface{}, 0, len(cacheData)*2+len(delFields)+1)
+	args = append(args, len(cacheData))
+	for k, v := range cacheData {
+		args = append(args, k, v)
+	}
+	for _, field := range delFields {
+		args = append(args, field)
+	}
+	_, err := luaUpdateMap.Run(context.Background(), this.redisClient, []string{key}, args...).Result()
+	return ignoreNilError(err)
+}
+
+// scriptIntResult 把Lua脚本的返回值转换成int64
+// Lua的整数返回值经redis协议返回后是int64
+func scriptIntResult(res interface{}) int64 {
+	if n, ok := res.(int64); ok {
+		return n
+	}
+	return 0
+}
+
+func (this *RedisCache) HSetIfAbsentOrEqual(key, field string, value interface{}) (bool, error) {
+	res, err := luaHSetIfAbsentOrEqual.Run(context.Background(), this.redisClient, []string{key}, field, value).Result()
+	if err := ignoreNilError(err); err != nil {
+		return false, err
+	}
+	return scriptIntResult(res) == 1, nil
+}
+
+func (this *RedisCache) HDelIfValueEqual(key, field string, expectValue interface{}) (bool, error) {
+	res, err := luaHDelIfValueEqual.Run(context.Background(), this.redisClient, []string{key}, field, expectValue).Result()
+	if err := ignoreNilError(err); err != nil {
+		return false, err
+	}
+	return scriptIntResult(res) == 1, nil
+}
+
+func (this *RedisCache) HDelFieldsByValue(key string, value interface{}) (int64, error) {
+	res, err := luaHDelFieldsByValue.Run(context.Background(), this.redisClient, []string{key}, value).Result()
+	if err := ignoreNilError(err); err != nil {
+		return 0, err
+	}
+	return scriptIntResult(res), nil
 }

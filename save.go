@@ -167,13 +167,24 @@ func SaveValueToCache(kvCache KvCache, cacheKeyName string, val reflect.Value) {
 		glog.Error("SaveValueToCache err:unsupport type", "cacheKey", cacheKeyName, "type", val)
 
 	case reflect.Map:
+		cacheData := val.Interface()
+		if scriptCache, ok := kvCache.(ScriptKvCache); ok {
+			// Lua脚本原子执行 Del+HSet:分步执行时,Del与写入之间并发读会读到空数据,
+			// 进程崩溃则会留下已删未写的丢失状态
+			err := scriptCache.AtomicReplaceMap(cacheKeyName, cacheData)
+			if err != nil {
+				glog.Error("AtomicReplaceMap err", "cacheKey", cacheKeyName, "err", err)
+				return
+			}
+			return
+		}
+		// 回退:分步执行(不支持脚本的缓存系统)
 		// map格式作为一个整体缓存时,需要先删除之前的数据
 		_, err := kvCache.Del(cacheKeyName)
 		if IsRedisError(err) {
 			glog.Error("kvCache.Del err", "cacheKey", cacheKeyName, "err", err)
 			return
 		}
-		cacheData := val.Interface()
 		// map -> hash
 		err = kvCache.SetMap(cacheKeyName, cacheData)
 		if IsRedisError(err) {
@@ -236,20 +247,34 @@ func SaveMapValueToCache(kvCache KvCache, cacheKeyName string, val reflect.Value
 				delMap = append(delMap, util.Itoa(dirtyKey))
 			}
 		})
-		if len(setMap) > 0 {
-			// 批量更新
-			err := kvCache.SetMap(cacheKeyName, setMap)
-			if IsRedisError(err) {
-				glog.Error("kvCache.SetMap err", "cacheKey", cacheKeyName, "setMap", setMap, "err", err)
+		if len(setMap) > 0 || len(delMap) > 0 {
+			if scriptCache, ok := kvCache.(ScriptKvCache); ok {
+				// Lua脚本原子执行 HSet+HDel:
+				// 分步执行时若set成功del失败(或中途崩溃),调用方ResetDirty后不再重试,
+				// 内存与缓存将永久不一致,最终把错误数据落库;原子执行则不会出现半成品状态
+				err := scriptCache.AtomicUpdateMap(cacheKeyName, setMap, delMap)
+				if err != nil {
+					glog.Error("AtomicUpdateMap err", "cacheKey", cacheKeyName, "setMap", setMap, "delMap", delMap, "err", err)
+					return
+				}
 				return
 			}
-		}
-		if len(delMap) > 0 {
-			// 批量删除
-			_, err := kvCache.HDel(cacheKeyName, delMap...)
-			if IsRedisError(err) {
-				glog.Error("kvCache.HDel err", "cacheKey", cacheKeyName, "delMap", delMap, "err", err)
-				return
+			// 回退:分步执行(不支持脚本的缓存系统)
+			if len(setMap) > 0 {
+				// 批量更新
+				err := kvCache.SetMap(cacheKeyName, setMap)
+				if IsRedisError(err) {
+					glog.Error("kvCache.SetMap err", "cacheKey", cacheKeyName, "setMap", setMap, "err", err)
+					return
+				}
+			}
+			if len(delMap) > 0 {
+				// 批量删除
+				_, err := kvCache.HDel(cacheKeyName, delMap...)
+				if IsRedisError(err) {
+					glog.Error("kvCache.HDel err", "cacheKey", cacheKeyName, "delMap", delMap, "err", err)
+					return
+				}
 			}
 		}
 	}
