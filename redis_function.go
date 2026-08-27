@@ -74,20 +74,23 @@ local function hdel_fields_by_value(keys, args)
 	return n
 end
 
-redis.register_function('gentity.replace_map', replace_map)
-redis.register_function('gentity.update_map', update_map)
-redis.register_function('gentity.hset_if_absent_or_equal', hset_if_absent_or_equal)
-redis.register_function('gentity.hdel_if_value_equal', hdel_if_value_equal)
-redis.register_function('gentity.hdel_fields_by_value', hdel_fields_by_value)
+-- NOTE:Redis 7.x实测,函数名/库名只允许字母/数字/下划线,
+-- 含'.'或'-'的名字会导致FUNCTION LOAD失败(ERR Library names can only contain...),
+-- 因此函数名用下划线而非"库名.函数名"的点号风格
+redis.register_function('gentity_replace_map', replace_map)
+redis.register_function('gentity_update_map', update_map)
+redis.register_function('gentity_hset_if_absent_or_equal', hset_if_absent_or_equal)
+redis.register_function('gentity_hdel_if_value_equal', hdel_if_value_equal)
+redis.register_function('gentity_hdel_fields_by_value', hdel_fields_by_value)
 `
 
 // 函数库中的函数名
 const (
-	funcReplaceMap          = "gentity.replace_map"
-	funcUpdateMap           = "gentity.update_map"
-	funcHSetIfAbsentOrEqual = "gentity.hset_if_absent_or_equal"
-	funcHDelIfValueEqual    = "gentity.hdel_if_value_equal"
-	funcHDelFieldsByValue   = "gentity.hdel_fields_by_value"
+	funcReplaceMap          = "gentity_replace_map"
+	funcUpdateMap           = "gentity_update_map"
+	funcHSetIfAbsentOrEqual = "gentity_hset_if_absent_or_equal"
+	funcHDelIfValueEqual    = "gentity_hdel_if_value_equal"
+	funcHDelFieldsByValue   = "gentity_hdel_fields_by_value"
 )
 
 // Function不可用时回退到等价的EVAL脚本
@@ -108,7 +111,8 @@ const (
 
 // isFunctionsUnavailableError 判断错误是否表示"Function能力不可用"
 // - Redis < 7.0: ERR unknown command 'FCALL'
-// - 库未安装: ERR No function named / No function library
+// - 库未安装或函数不存在(Redis 7.x实测): ERR Function not found
+// - 兼容其他变体: ERR No function named / No function library
 // 其余错误(如集群跨slot)是真实的调用错误,应返回给调用方而不是静默回退
 func isFunctionsUnavailableError(err error) bool {
 	if err == nil {
@@ -116,6 +120,7 @@ func isFunctionsUnavailableError(err error) bool {
 	}
 	msg := strings.ToLower(err.Error())
 	return strings.Contains(msg, "unknown command") ||
+		strings.Contains(msg, "function not found") ||
 		strings.Contains(msg, "no function named") ||
 		strings.Contains(msg, "no function library")
 }
@@ -152,12 +157,18 @@ func (this *RedisCache) InstallFunctions(ctx context.Context) error {
 	loadFn := func(ctx context.Context, client *redis.Client) error {
 		return client.FunctionLoadReplace(ctx, redisFunctionLibrarySource).Err()
 	}
+	var err error
 	switch client := this.redisClient.(type) {
 	case *redis.Client:
-		return loadFn(ctx, client)
+		err = loadFn(ctx, client)
 	case *redis.ClusterClient:
-		return client.ForEachMaster(ctx, loadFn)
+		err = client.ForEachMaster(ctx, loadFn)
 	default:
 		return fmt.Errorf("InstallFunctions: unsupported redis client type %T", this.redisClient)
 	}
+	if err == nil {
+		// 库已就绪,重置探测状态:此前因库缺失降级为EVAL的实例,恢复FCALL路径
+		this.functionState.Store(funcStateAvailable)
+	}
+	return err
 }
