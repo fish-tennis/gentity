@@ -281,6 +281,9 @@ type MongoDb struct {
 	kvDbs     map[string]KvDb
 }
 
+// NewMongoDb只保存连接参数,不会建立连接
+// 标准使用流程(顺序不可颠倒):
+// NewMongoDb -> RegisterXxxDb(注册表) -> Connect()(连接+建唯一索引) -> ShardDatabase(可选,分片)
 func NewMongoDb(uri, dbName string) *MongoDb {
 	return &MongoDb{
 		uri:       uri,
@@ -324,6 +327,7 @@ func (this *MongoDb) RegisterPlayerDb(collectionName string, shardKeyType ShardK
 	return col
 }
 
+// NOTE: 必须在Connect()之前调用,原因见RegisterEntityDb
 func (this *MongoDb) RegisterKvDb(collectionName string, shardKeyType ShardKeyType, keyName, valueName string) KvDb {
 	col := &MongoKvDb{
 		mongoDatabase:  this.mongoDatabase,
@@ -419,6 +423,10 @@ func (this *MongoDb) GetMongoClient() *mongo.Client {
 }
 
 // 设置database分片
+// NOTE:
+// 1. 需在Connect()之后调用
+// 2. 只对当前已注册的collection生效,注册在后的表不会被分片
+// 3. ShardKeyNone的collection会自动跳过
 func (this *MongoDb) ShardDatabase(dbName string) error {
 	adminDb := this.mongoClient.Database("admin")
 	err := adminDb.RunCommand(context.Background(), bson.D{
