@@ -100,7 +100,7 @@ func initSingleComponents(t *testing.T) {
 func TestLoadMongo(t *testing.T) {
 	slog.SetLogLoggerLevel(slog.LevelDebug)
 	mongoDb := gentity.NewMongoDb(_mongoUri, _mongoDbName)
-	playerDb := mongoDb.RegisterPlayerDb(_collectionName, true, "_id", "AccountId", "RegionId")
+	playerDb := mongoDb.RegisterPlayerDb(_collectionName, gentity.ShardKeyHashed, "_id", "AccountId", "RegionId")
 	if !mongoDb.Connect() {
 		t.Fatal("connect db error")
 	}
@@ -120,7 +120,7 @@ func TestLoadMongo(t *testing.T) {
 func TestSingleField(t *testing.T) {
 	slog.SetLogLoggerLevel(slog.LevelDebug)
 	mongoDb := gentity.NewMongoDb(_mongoUri, _mongoDbName)
-	playerDb := mongoDb.RegisterPlayerDb(_collectionName, true, "_id", "AccountId", "RegionId")
+	playerDb := mongoDb.RegisterPlayerDb(_collectionName, gentity.ShardKeyHashed, "_id", "AccountId", "RegionId")
 	if !mongoDb.Connect() {
 		t.Fatal("connect db error")
 	}
@@ -289,7 +289,7 @@ type ChildEntityData struct {
 func TestMapField(t *testing.T) {
 	slog.SetLogLoggerLevel(slog.LevelDebug)
 	mongoDb := gentity.NewMongoDb(_mongoUri, _mongoDbName)
-	playerDb := mongoDb.RegisterPlayerDb(_collectionName, true, "_id", "AccountId", "RegionId")
+	playerDb := mongoDb.RegisterPlayerDb(_collectionName, gentity.ShardKeyHashed, "_id", "AccountId", "RegionId")
 	if !mongoDb.Connect() {
 		t.Fatal("connect db error")
 	}
@@ -433,7 +433,7 @@ func initChildComponents(t *testing.T) {
 func TestChildFields(t *testing.T) {
 	slog.SetLogLoggerLevel(slog.LevelDebug)
 	mongoDb := gentity.NewMongoDb(_mongoUri, _mongoDbName)
-	playerDb := mongoDb.RegisterPlayerDb(_collectionName, true, "_id", "AccountId", "RegionId")
+	playerDb := mongoDb.RegisterPlayerDb(_collectionName, gentity.ShardKeyHashed, "_id", "AccountId", "RegionId")
 	if !mongoDb.Connect() {
 		t.Fatal("connect db error")
 	}

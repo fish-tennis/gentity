@@ -11,7 +11,7 @@ import (
 // mongo实现的自增id方式
 func TestIncrementId(t *testing.T) {
 	mongoDb := gentity.NewMongoDb(_mongoUri, _mongoDbName)
-	kvDb := mongoDb.RegisterKvDb("kv", false, "k", "v")
+	kvDb := mongoDb.RegisterKvDb("kv", gentity.ShardKeyNone, "k", "v")
 	if !mongoDb.Connect() {
 		t.Fatal("connect db error")
 	}
@@ -36,7 +36,7 @@ func TestIncrementId(t *testing.T) {
 
 func TestKvDb(t *testing.T) {
 	mongoDb := gentity.NewMongoDb(_mongoUri, _mongoDbName)
-	kvDb := mongoDb.RegisterKvDb("kv", false, "k", "v")
+	kvDb := mongoDb.RegisterKvDb("kv", gentity.ShardKeyNone, "k", "v")
 	if !mongoDb.Connect() {
 		t.Fatal("connect db error")
 	}
@@ -71,7 +71,7 @@ func TestKvDb(t *testing.T) {
 // 只对集群模式的mongodb有效
 func TestShard(t *testing.T) {
 	mongoDb := gentity.NewMongoDb(_mongoUri, _mongoDbName)
-	playerDb := mongoDb.RegisterPlayerDb("player", true, "_id", "AccountId", "RegionId")
+	playerDb := mongoDb.RegisterPlayerDb("player", gentity.ShardKeyHashed, "_id", "AccountId", "RegionId")
 	if !mongoDb.Connect() {
 		t.Fatal("connect db error")
 	}

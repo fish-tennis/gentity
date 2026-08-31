@@ -10,8 +10,8 @@ import (
 
 // KvDb的mongo实现
 type MongoKvDb struct {
-	mongoDatabase  *mongo.Database
-	hashedShardKey bool
+	mongoDatabase *mongo.Database
+	shardKeyType  ShardKeyType
 
 	// 表名
 	collectionName string
@@ -97,10 +97,15 @@ func (this *MongoKvDb) Delete(key interface{}) error {
 }
 
 // 设置分片key
+// ShardKeyNone表示不分片,直接跳过
 func (this *MongoKvDb) Shard() error {
+	if this.shardKeyType == ShardKeyNone {
+		glog.Info("Shard skip", "collection", this.collectionName)
+		return nil
+	}
 	collectionFullName := fmt.Sprintf("%v.%v", this.mongoDatabase.Name(), this.collectionName)
 	key := bson.E{Key: this.keyName, Value: 1}
-	if this.hashedShardKey {
+	if this.shardKeyType == ShardKeyHashed {
 		key.Value = "hashed"
 	}
 	err := this.mongoDatabase.Client().Database("admin").RunCommand(context.Background(), bson.D{
@@ -110,7 +115,7 @@ func (this *MongoKvDb) Shard() error {
 	if err != nil {
 		glog.Error("Shard", "collection", collectionFullName, "err", err)
 	} else {
-		glog.Info("Shard", "collection", collectionFullName, "hashed", this.hashedShardKey)
+		glog.Info("Shard", "collection", collectionFullName, "shardKeyType", this.shardKeyType)
 	}
 	return err
 }
