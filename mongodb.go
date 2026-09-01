@@ -39,6 +39,22 @@ type MongoCollection struct {
 	collectionName string
 	// 唯一id
 	uniqueId string
+	// 分片键列名(可选)
+	// 非空时Shard()以该列作为分片键,并启用ShardKeyEntityDb的分片键附加条件方法;
+	// 典型场景:player表分片键AccountId与uniqueId _id不同,
+	// 按playerId的读写附加AccountId条件后可直达分片(见db.go的ShardKeyEntityDb)
+	shardKeyName string
+}
+
+// SetShardKeyName 设置分片键列名,启用ShardKeyEntityDb的分片键附加条件方法
+// NOTE:须在Connect()/ShardDatabase()之前调用:Shard()在ShardDatabase时读取该列作为分片键
+func (this *MongoCollection) SetShardKeyName(shardKeyName string) {
+	this.shardKeyName = shardKeyName
+	glog.Info("SetShardKeyName", "collection", this.collectionName, "shardKeyName", shardKeyName)
+}
+
+func (this *MongoCollection) ShardKeyName() string {
+	return this.shardKeyName
 }
 
 func (this *MongoCollection) GetCollection() *mongo.Collection {
@@ -69,7 +85,12 @@ func (this *MongoCollection) Shard() error {
 		return nil
 	}
 	collectionFullName := fmt.Sprintf("%v.%v", this.mongoDatabase.Name(), this.collectionName)
-	key := bson.E{Key: this.uniqueId, Value: 1}
+	// 分片键列优先使用shardKeyName,未设置时退化为uniqueId(两者相同的常规场景)
+	shardKeyName := this.shardKeyName
+	if shardKeyName == "" {
+		shardKeyName = this.uniqueId
+	}
+	key := bson.E{Key: shardKeyName, Value: 1}
 	if this.shardKeyType == ShardKeyHashed {
 		key.Value = "hashed"
 	}
@@ -174,6 +195,105 @@ func (this *MongoCollection) DeleteComponentField(entityKey interface{}, compone
 		return updateErr
 	}
 	//glog.Debug("DeleteComponentField", "result", result)
+	return nil
+}
+
+// ==================== ShardKeyEntityDb实现 ====================
+// 分片键与uniqueId不同的collection(如player表:分片键AccountId,uniqueId _id)使用,
+// filter附加分片键条件后mongos可直达目标分片,避免广播;详见db.go的ShardKeyEntityDb
+
+// shardFilter 构造"{分片键列: shardKeyValue, uniqueId: entityKey}"查询条件
+func (this *MongoCollection) shardFilter(shardKeyValue, entityKey interface{}) bson.D {
+	return bson.D{
+		{Key: this.shardKeyName, Value: shardKeyValue},
+		{Key: this.uniqueId, Value: entityKey},
+	}
+}
+
+// 根据id+分片键查找数据(直达分片)
+func (this *MongoCollection) FindEntityByIdWithShardKey(shardKeyValue, entityKey interface{}, data interface{}) (bool, error) {
+	if len(this.uniqueId) == 0 || len(this.shardKeyName) == 0 {
+		return false, ErrNoUniqueColumn
+	}
+	col := this.mongoDatabase.Collection(this.collectionName)
+	result := col.FindOne(context.Background(), this.shardFilter(shardKeyValue, entityKey))
+	if result == nil || result.Err() == mongo.ErrNoDocuments {
+		return false, nil
+	}
+	err := result.Decode(data)
+	if err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// 保存Entity数据(直达分片)
+func (this *MongoCollection) SaveEntityWithShardKey(shardKeyValue, entityKey interface{}, entityData interface{}) error {
+	col := this.mongoDatabase.Collection(this.collectionName)
+	_, err := col.UpdateOne(context.Background(), this.shardFilter(shardKeyValue, entityKey), entityData)
+	return err
+}
+
+// 删除Entity数据(直达分片)
+func (this *MongoCollection) DeleteEntityWithShardKey(shardKeyValue, entityKey interface{}) error {
+	col := this.mongoDatabase.Collection(this.collectionName)
+	_, err := col.DeleteOne(context.Background(), this.shardFilter(shardKeyValue, entityKey))
+	return err
+}
+
+// 保存1个组件(直达分片)
+func (this *MongoCollection) SaveComponentWithShardKey(shardKeyValue, entityKey interface{}, componentName string, componentData interface{}) error {
+	col := this.mongoDatabase.Collection(this.collectionName)
+	_, updateErr := col.UpdateOne(context.Background(), this.shardFilter(shardKeyValue, entityKey),
+		bson.D{{Key: "$set", Value: bson.D{{Key: componentName, Value: componentData}}}})
+	if updateErr != nil {
+		return updateErr
+	}
+	return nil
+}
+
+// 批量保存组件(直达分片)
+func (this *MongoCollection) SaveComponentsWithShardKey(shardKeyValue, entityKey interface{}, components map[string]interface{}) error {
+	if len(components) == 0 {
+		return nil
+	}
+	col := this.mongoDatabase.Collection(this.collectionName)
+	_, updateErr := col.UpdateMany(context.Background(), this.shardFilter(shardKeyValue, entityKey),
+		bson.D{{Key: "$set", Value: components}})
+	if updateErr != nil {
+		return updateErr
+	}
+	return nil
+}
+
+// 保存1个组件的一个字段(直达分片)
+func (this *MongoCollection) SaveComponentFieldWithShardKey(shardKeyValue, entityKey interface{}, componentName string, fieldName string, fieldData interface{}) error {
+	col := this.mongoDatabase.Collection(this.collectionName)
+	// NOTE:如果player.ComponentName == null
+	// 直接更新player.ComponentName.fieldName会报错: Cannot create field 'fieldName' in element
+	_, updateErr := col.UpdateOne(context.Background(), this.shardFilter(shardKeyValue, entityKey),
+		bson.D{{Key: "$set", Value: bson.D{{Key: componentName + "." + fieldName, Value: fieldData}}}})
+	if updateErr != nil {
+		return updateErr
+	}
+	return nil
+}
+
+// 删除1个组件的某些字段(直达分片)
+func (this *MongoCollection) DeleteComponentFieldWithShardKey(shardKeyValue, entityKey interface{}, componentName string, fieldName ...string) error {
+	if len(fieldName) == 0 {
+		return nil
+	}
+	col := this.mongoDatabase.Collection(this.collectionName)
+	fieldNames := bson.D{}
+	for _, name := range fieldName {
+		fieldNames = append(fieldNames, bson.E{Key: componentName + "." + name})
+	}
+	_, updateErr := col.UpdateOne(context.Background(), this.shardFilter(shardKeyValue, entityKey),
+		bson.D{{Key: "$unset", Value: fieldNames}})
+	if updateErr != nil {
+		return updateErr
+	}
 	return nil
 }
 

@@ -48,6 +48,48 @@ type PlayerDb interface {
 	FindAccountIdByPlayerId(playerId int64) (int64, error)
 }
 
+// 分片键附加条件的EntityDb可选接口
+// 适用场景:分片键与uniqueId不同的collection(如player表:分片键AccountId,uniqueId _id)
+//
+// 分片集群下,按entityKey的读写(如FindEntityById/SaveEntity)不含分片键时,
+// 会被mongos广播到所有分片;附加分片键条件后可直达目标分片.
+// 未附加分片键时仅性能退化(广播),不影响正确性,因此本接口是可选增强,
+// 调用方通过类型断言使用:
+//
+//	if shardDb, ok := db.GetEntityDb(name).(ShardKeyEntityDb); ok && shardDb.ShardKeyName() != "" {
+//	    shardDb.FindEntityByIdWithShardKey(accountId, playerId, data)
+//	}
+type ShardKeyEntityDb interface {
+	EntityDb
+
+	// 分片键列名,空表示该collection未启用分片键附加条件
+	ShardKeyName() string
+
+	// 根据id+分片键查找数据(直达分片)
+	FindEntityByIdWithShardKey(shardKeyValue, entityKey interface{}, data interface{}) (bool, error)
+
+	// 保存Entity数据(update entity by entityKey+shardKey,直达分片)
+	SaveEntityWithShardKey(shardKeyValue, entityKey interface{}, entityData interface{}) error
+
+	// 删除Entity数据(delete entity by entityKey+shardKey,直达分片)
+	DeleteEntityWithShardKey(shardKeyValue, entityKey interface{}) error
+
+	// 保存1个组件(update entity's component,直达分片)
+	SaveComponentWithShardKey(shardKeyValue, entityKey interface{}, componentName string, componentData interface{}) error
+
+	// 批量保存组件(update entity's components...,直达分片)
+	SaveComponentsWithShardKey(shardKeyValue, entityKey interface{}, components map[string]interface{}) error
+
+	// 保存1个组件的一个字段(update entity's component.field,直达分片)
+	SaveComponentFieldWithShardKey(shardKeyValue, entityKey interface{}, componentName string, fieldName string, fieldData interface{}) error
+
+	// 删除1个组件的某些字段(直达分片)
+	DeleteComponentFieldWithShardKey(shardKeyValue, entityKey interface{}, componentName string, fieldName ...string) error
+
+	// NOTE:InsertEntity无需分片键变体:插入的文档本身携带分片键字段,mongos自动按其路由;
+	// 按分片键列查询的接口(如PlayerDb.FindPlayerIdByAccountId)天然含分片键,同样直达
+}
+
 // Kv数据接口
 // 游戏应用里,除了账号数据和玩家数据之外,其他以Key-Value存储的数据
 // KvDb接口是为了应用层能够灵活的更换存储数据库(mysql,mongo,redis等)
