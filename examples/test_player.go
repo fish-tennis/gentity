@@ -23,6 +23,12 @@ func (this *Player) SaveCache(kvCache gentity.KvCache) error {
 	return this.BaseEntity.SaveCache(kvCache, "p", this.GetId())
 }
 
+// 实现gentity.ShardKeyProvider:player表分片键AccountId
+// 配合SetShardKeyName("AccountId")注册后,存盘链路自动附加分片键条件直达分片
+func (this *Player) GetShardKeyValue() interface{} {
+	return this.AccountId
+}
+
 // 分发事件
 func (this *Player) FireEvent(event any) {
 	if this.fireEventLoopChecker == nil {

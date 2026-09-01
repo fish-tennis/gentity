@@ -2,6 +2,7 @@ package examples
 
 import (
 	"context"
+	"strings"
 
 	"github.com/fish-tennis/gentity"
 	"github.com/fish-tennis/gentity/examples/pb"
@@ -362,4 +363,73 @@ func TestShardKeyRoutingOnShardedCluster(t *testing.T) {
 	if err := client.Database(dbName).Drop(ctx); err != nil {
 		t.Logf("drop database: %v", err)
 	}
+}
+
+// 验证存盘链路(SaveEntityChangedDataToDb)自动附加分片键条件:
+// Player实现ShardKeyProvider + collection的SetShardKeyName("AccountId")后,
+// 保存走SaveComponentsWithShardKey(filter含AccountId)
+// 断言技巧:用"错误的AccountId"保存,若分片键条件生效则filter匹配不到文档,数据不会更新;
+// 若未附加(老路径),更新会成功——以此证明分片键条件确实附加到了写操作上
+func TestSaveEntityChangedDataToDbWithShardKey(t *testing.T) {
+	const collectionName = "player_savedb"
+	const (
+		accountId = int64(200)
+		playerId  = int64(201)
+	)
+	mongoDb := gentity.NewMongoDb(_mongoUri, _mongoDbName)
+	playerDb := mongoDb.RegisterPlayerDb(collectionName, gentity.ShardKeyNone, "_id", "AccountId", "RegionId")
+	if !mongoDb.Connect() {
+		t.Fatal("connect db error")
+	}
+	defer mongoDb.Disconnect()
+	playerDb.(*gentity.MongoCollectionPlayer).SetShardKeyName("AccountId")
+	ctx := context.Background()
+
+	// 清场并插入(文档的AccountId=200,无BaseInfo组件数据)
+	playerDb.DeleteEntity(playerId)
+	if err, _ := playerDb.InsertEntity(playerId, bson.M{
+		"_id": playerId, "AccountId": accountId, "RegionId": 1,
+	}); err != nil {
+		t.Fatalf("InsertEntity: %v", err)
+	}
+
+	// 文档中是否存在BaseInfo组件字段(组件保存名大小写随配置,用EqualFold匹配)
+	hasBaseInfoField := func() bool {
+		var doc bson.M
+		if err := mongoDb.GetMongoDatabase().Collection(collectionName).
+			FindOne(ctx, bson.D{{Key: "_id", Value: playerId}}).Decode(&doc); err != nil {
+			t.Fatalf("FindOne: %v", err)
+		}
+		for k := range doc {
+			if strings.EqualFold(k, "baseinfo") {
+				return true
+			}
+		}
+		return false
+	}
+
+	// 1.内存实体的AccountId故意写错(999≠文档200):
+	// 分片键条件生效→filter{AccountId:999,_id:201}匹配不到→数据不更新
+	wrongPlayer := newTestPlayer(playerId, accountId+999)
+	wrongPlayer.GetBaseInfo().AddExp(100)
+	// kvCache传nil安全:removeCacheAfterSaveDb=false时存盘链路不触达缓存
+	if err := gentity.SaveEntityChangedDataToDb(playerDb, wrongPlayer, nil, false, ""); err != nil {
+		t.Fatalf("SaveEntityChangedDataToDb(wrong): %v", err)
+	}
+	if hasBaseInfoField() {
+		t.Fatal("save with mismatched shardKey should NOT update db")
+	}
+
+	// 2.正确的AccountId:filter匹配→更新成功,组件数据落库
+	rightPlayer := newTestPlayer(playerId, accountId)
+	rightPlayer.GetBaseInfo().AddExp(100)
+	if err := gentity.SaveEntityChangedDataToDb(playerDb, rightPlayer, nil, false, ""); err != nil {
+		t.Fatalf("SaveEntityChangedDataToDb(right): %v", err)
+	}
+	if !hasBaseInfoField() {
+		t.Fatal("save with matched shardKey should update db")
+	}
+
+	// 清理
+	playerDb.DeleteEntity(playerId)
 }

@@ -280,6 +280,19 @@ func SaveMapValueToCache(kvCache KvCache, cacheKeyName string, val reflect.Value
 	}
 }
 
+// saveComponentsOptionalShardKey 保存组件变更数据,按需附加分片键条件
+// 检测到entityDb的分片键列已启用且entity提供分片键值(ShardKeyProvider)时,
+// 附加分片键条件直达目标分片;否则退化为常规SaveComponents
+// (分片集群下广播,不影响正确性,便于渐进式启用)
+func saveComponentsOptionalShardKey(entityDb EntityDb, entity Entity, entityKey interface{}, changedData map[string]any) error {
+	if shardDb, ok := entityDb.(ShardKeyEntityDb); ok && shardDb.ShardKeyName() != "" {
+		if provider, ok := entity.(ShardKeyProvider); ok {
+			return shardDb.SaveComponentsWithShardKey(provider.GetShardKeyValue(), entityKey, changedData)
+		}
+	}
+	return entityDb.SaveComponents(entityKey, changedData)
+}
+
 // Entity的变化数据保存到数据库
 //
 //	key为entity.GetId()
@@ -379,7 +392,8 @@ func SaveEntityChangedDataToDbByKey(entityDb EntityDb, entity Entity, entityKey 
 	}
 	// NOTE: 明文保存的proto字段,字段名会被mongodb自动转为小写 Q:有办法解决吗?
 	// 如examples里的baseInfoComponent的pb.BaseInfo的LongFieldNameTest字段在mongodb中会被转成longfieldnametest
-	saveDbErr := entityDb.SaveComponents(entityKey, record.changedData)
+	// entityDb支持分片键且entity实现ShardKeyProvider时,自动附加分片键条件直达分片(见saveComponentsOptionalShardKey)
+	saveDbErr := saveComponentsOptionalShardKey(entityDb, entity, entityKey, record.changedData)
 	if saveDbErr != nil {
 		glog.Error("SaveEntityChangedDataToDbByKey", "entityKey", entityKey, "err", saveDbErr)
 		glog.Error("SaveEntityChangedDataToDbByKeyErr", "data", record.changedData)

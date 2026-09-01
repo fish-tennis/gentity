@@ -90,6 +90,22 @@ type ShardKeyEntityDb interface {
 	// 按分片键列查询的接口(如PlayerDb.FindPlayerIdByAccountId)天然含分片键,同样直达
 }
 
+// ShardKeyProvider Entity的可选接口:提供分片键的值
+// 配合ShardKeyEntityDb使用:存盘链路(SaveEntityChangedDataToDb)检测到
+// entityDb的分片键列已启用(ShardKeyName非空)且entity实现了本接口时,
+// 自动在数据库写操作上附加分片键条件,直达目标分片;
+// 任一条件不满足则退化为常规操作(分片集群下广播,不影响正确性)
+//
+// 典型实现:player表分片键AccountId,Player实现返回自身的AccountId:
+//
+//	func (this *Player) GetShardKeyValue() interface{} {
+//	    return this.AccountId
+//	}
+type ShardKeyProvider interface {
+	// 分片键值,须与collection注册的分片键列(ShardKeyName)对应
+	GetShardKeyValue() interface{}
+}
+
 // Kv数据接口
 // 游戏应用里,除了账号数据和玩家数据之外,其他以Key-Value存储的数据
 // KvDb接口是为了应用层能够灵活的更换存储数据库(mysql,mongo,redis等)
