@@ -148,8 +148,9 @@ const (
 )
 
 // fcall不可用错误的匹配:Redis返回"unknown command 'FCALL'",miniredis返回"unknown command `fcall`",
-// 引号可选(兼容无引号变体),fcall后必须紧跟词边界,避免错误文案其他位置恰好出现"fcall"字样而误判
-var fcallUnknownCmdRegex = regexp.MustCompile(`unknown command ['"` + "`" + `]?fcall\b`)
+// 引号可选(兼容无引号变体),冒号可选(兼容部分兼容实现/云Redis的"unknown command: 'fcall'"格式),
+// fcall后必须紧跟词边界,避免错误文案其他位置恰好出现"fcall"字样而误判
+var fcallUnknownCmdRegex = regexp.MustCompile(`unknown command:? ['"` + "`" + `]?fcall\b`)
 
 // isFunctionsUnavailableError 判断错误是否表示"Function能力不可用"
 // - Redis < 7.0: ERR unknown command 'FCALL'

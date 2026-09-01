@@ -159,7 +159,8 @@ func (this *MongoCollection) SaveComponents(entityKey interface{}, components ma
 		return nil
 	}
 	col := this.mongoDatabase.Collection(this.collectionName)
-	_, updateErr := col.UpdateMany(context.Background(), bson.D{{Key: this.uniqueId, Value: entityKey}},
+	// filter含唯一键(Connect时建了唯一索引),最多匹配1个文档,UpdateOne语义准确
+	_, updateErr := col.UpdateOne(context.Background(), bson.D{{Key: this.uniqueId, Value: entityKey}},
 		bson.D{{Key: "$set", Value: components}})
 	if updateErr != nil {
 		return updateErr
@@ -210,10 +211,30 @@ func (this *MongoCollection) shardFilter(shardKeyValue, entityKey interface{}) b
 	}
 }
 
+// checkShardKeyEnabled 校验分片键附加条件已启用(分片键列与唯一键列均已配置)
+// 未启用时返回ErrNoUniqueColumn,防止shardFilter构造出{"":value}之类的错误filter静默匹配不到文档
+func (this *MongoCollection) checkShardKeyEnabled() error {
+	if len(this.uniqueId) == 0 || len(this.shardKeyName) == 0 {
+		return ErrNoUniqueColumn
+	}
+	return nil
+}
+
+// checkShardKeyMatched 写操作执行后的防线校验:分片键filter匹配0条时mongo不报错(静默无操作),
+// 但这通常意味着分片键值与文档中该字段的值不一致(配置错误或数据异常),
+// 上层的"写库成功后删缓存/重置修改标记"防线会随之失效,造成数据丢失,必须打日志让运维可感知
+// NOTE:只告警不报错,不改变既有行为(修复链路依赖写库成功后删缓存,报错会中断后续组件的修复)
+func (this *MongoCollection) checkShardKeyMatched(op string, shardKeyValue, entityKey interface{}, matchedCount int64) {
+	if matchedCount == 0 {
+		glog.Error("ShardKeyFilterMatchedNothing", "op", op, "collection", this.collectionName,
+			"shardKey", this.shardKeyName, "shardKeyValue", shardKeyValue, "entityKey", entityKey)
+	}
+}
+
 // 根据id+分片键查找数据(直达分片)
 func (this *MongoCollection) FindEntityByIdWithShardKey(shardKeyValue, entityKey interface{}, data interface{}) (bool, error) {
-	if len(this.uniqueId) == 0 || len(this.shardKeyName) == 0 {
-		return false, ErrNoUniqueColumn
+	if err := this.checkShardKeyEnabled(); err != nil {
+		return false, err
 	}
 	col := this.mongoDatabase.Collection(this.collectionName)
 	result := col.FindOne(context.Background(), this.shardFilter(shardKeyValue, entityKey))
@@ -229,13 +250,23 @@ func (this *MongoCollection) FindEntityByIdWithShardKey(shardKeyValue, entityKey
 
 // 保存Entity数据(直达分片)
 func (this *MongoCollection) SaveEntityWithShardKey(shardKeyValue, entityKey interface{}, entityData interface{}) error {
+	if err := this.checkShardKeyEnabled(); err != nil {
+		return err
+	}
 	col := this.mongoDatabase.Collection(this.collectionName)
-	_, err := col.UpdateOne(context.Background(), this.shardFilter(shardKeyValue, entityKey), entityData)
-	return err
+	res, err := col.UpdateOne(context.Background(), this.shardFilter(shardKeyValue, entityKey), entityData)
+	if err != nil {
+		return err
+	}
+	this.checkShardKeyMatched("SaveEntity", shardKeyValue, entityKey, res.MatchedCount)
+	return nil
 }
 
 // 删除Entity数据(直达分片)
 func (this *MongoCollection) DeleteEntityWithShardKey(shardKeyValue, entityKey interface{}) error {
+	if err := this.checkShardKeyEnabled(); err != nil {
+		return err
+	}
 	col := this.mongoDatabase.Collection(this.collectionName)
 	_, err := col.DeleteOne(context.Background(), this.shardFilter(shardKeyValue, entityKey))
 	return err
@@ -243,12 +274,16 @@ func (this *MongoCollection) DeleteEntityWithShardKey(shardKeyValue, entityKey i
 
 // 保存1个组件(直达分片)
 func (this *MongoCollection) SaveComponentWithShardKey(shardKeyValue, entityKey interface{}, componentName string, componentData interface{}) error {
+	if err := this.checkShardKeyEnabled(); err != nil {
+		return err
+	}
 	col := this.mongoDatabase.Collection(this.collectionName)
-	_, updateErr := col.UpdateOne(context.Background(), this.shardFilter(shardKeyValue, entityKey),
+	res, updateErr := col.UpdateOne(context.Background(), this.shardFilter(shardKeyValue, entityKey),
 		bson.D{{Key: "$set", Value: bson.D{{Key: componentName, Value: componentData}}}})
 	if updateErr != nil {
 		return updateErr
 	}
+	this.checkShardKeyMatched("SaveComponent", shardKeyValue, entityKey, res.MatchedCount)
 	return nil
 }
 
@@ -257,25 +292,34 @@ func (this *MongoCollection) SaveComponentsWithShardKey(shardKeyValue, entityKey
 	if len(components) == 0 {
 		return nil
 	}
+	if err := this.checkShardKeyEnabled(); err != nil {
+		return err
+	}
 	col := this.mongoDatabase.Collection(this.collectionName)
-	_, updateErr := col.UpdateMany(context.Background(), this.shardFilter(shardKeyValue, entityKey),
+	// filter含唯一键,最多匹配1个文档,UpdateOne语义准确
+	res, updateErr := col.UpdateOne(context.Background(), this.shardFilter(shardKeyValue, entityKey),
 		bson.D{{Key: "$set", Value: components}})
 	if updateErr != nil {
 		return updateErr
 	}
+	this.checkShardKeyMatched("SaveComponents", shardKeyValue, entityKey, res.MatchedCount)
 	return nil
 }
 
 // 保存1个组件的一个字段(直达分片)
 func (this *MongoCollection) SaveComponentFieldWithShardKey(shardKeyValue, entityKey interface{}, componentName string, fieldName string, fieldData interface{}) error {
+	if err := this.checkShardKeyEnabled(); err != nil {
+		return err
+	}
 	col := this.mongoDatabase.Collection(this.collectionName)
 	// NOTE:如果player.ComponentName == null
 	// 直接更新player.ComponentName.fieldName会报错: Cannot create field 'fieldName' in element
-	_, updateErr := col.UpdateOne(context.Background(), this.shardFilter(shardKeyValue, entityKey),
+	res, updateErr := col.UpdateOne(context.Background(), this.shardFilter(shardKeyValue, entityKey),
 		bson.D{{Key: "$set", Value: bson.D{{Key: componentName + "." + fieldName, Value: fieldData}}}})
 	if updateErr != nil {
 		return updateErr
 	}
+	this.checkShardKeyMatched("SaveComponentField", shardKeyValue, entityKey, res.MatchedCount)
 	return nil
 }
 
@@ -284,16 +328,20 @@ func (this *MongoCollection) DeleteComponentFieldWithShardKey(shardKeyValue, ent
 	if len(fieldName) == 0 {
 		return nil
 	}
+	if err := this.checkShardKeyEnabled(); err != nil {
+		return err
+	}
 	col := this.mongoDatabase.Collection(this.collectionName)
 	fieldNames := bson.D{}
 	for _, name := range fieldName {
 		fieldNames = append(fieldNames, bson.E{Key: componentName + "." + name})
 	}
-	_, updateErr := col.UpdateOne(context.Background(), this.shardFilter(shardKeyValue, entityKey),
+	res, updateErr := col.UpdateOne(context.Background(), this.shardFilter(shardKeyValue, entityKey),
 		bson.D{{Key: "$unset", Value: fieldNames}})
 	if updateErr != nil {
 		return updateErr
 	}
+	this.checkShardKeyMatched("DeleteComponentField", shardKeyValue, entityKey, res.MatchedCount)
 	return nil
 }
 

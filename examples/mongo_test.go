@@ -502,3 +502,43 @@ func TestFixEntityDataFromCacheWithShardKey(t *testing.T) {
 	// 清理
 	playerDb.DeleteEntity(playerId)
 }
+
+// 验证未SetShardKeyName时,所有WithShardKey方法返回ErrNoUniqueColumn而非构造{"":value}错误filter静默无操作
+// 校验在方法入口即返回,不触达数据库,无需连接mongo,测试可离线运行
+func TestShardKeyNotEnabled(t *testing.T) {
+	mongoDb := gentity.NewMongoDb(_mongoUri, _mongoDbName)
+	playerDb := mongoDb.RegisterPlayerDb("player_shardkey_disabled", gentity.ShardKeyNone, "_id", "AccountId", "RegionId")
+
+	shardDb, ok := playerDb.(gentity.ShardKeyEntityDb)
+	if !ok {
+		t.Fatal("MongoCollectionPlayer should implement ShardKeyEntityDb")
+	}
+	if shardDb.ShardKeyName() != "" {
+		t.Fatalf("ShardKeyName should be empty, got %v", shardDb.ShardKeyName())
+	}
+	const (
+		account = int64(400)
+		player  = int64(401)
+	)
+	if err := shardDb.SaveEntityWithShardKey(account, player, bson.D{}); err != gentity.ErrNoUniqueColumn {
+		t.Fatalf("SaveEntityWithShardKey: %v", err)
+	}
+	if err := shardDb.SaveComponentWithShardKey(account, player, "Bag", bson.M{"gold": 1}); err != gentity.ErrNoUniqueColumn {
+		t.Fatalf("SaveComponentWithShardKey: %v", err)
+	}
+	if err := shardDb.SaveComponentsWithShardKey(account, player, map[string]interface{}{"Bag": bson.M{"gold": 1}}); err != gentity.ErrNoUniqueColumn {
+		t.Fatalf("SaveComponentsWithShardKey: %v", err)
+	}
+	if err := shardDb.SaveComponentFieldWithShardKey(account, player, "Bag", "gold", 1); err != gentity.ErrNoUniqueColumn {
+		t.Fatalf("SaveComponentFieldWithShardKey: %v", err)
+	}
+	if err := shardDb.DeleteComponentFieldWithShardKey(account, player, "Bag", "gold"); err != gentity.ErrNoUniqueColumn {
+		t.Fatalf("DeleteComponentFieldWithShardKey: %v", err)
+	}
+	if err := shardDb.DeleteEntityWithShardKey(account, player); err != gentity.ErrNoUniqueColumn {
+		t.Fatalf("DeleteEntityWithShardKey: %v", err)
+	}
+	if found, err := shardDb.FindEntityByIdWithShardKey(account, player, &shardTestPlayerData{}); found || err != gentity.ErrNoUniqueColumn {
+		t.Fatalf("FindEntityByIdWithShardKey: found=%v err=%v", found, err)
+	}
+}

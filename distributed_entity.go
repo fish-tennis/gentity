@@ -211,17 +211,21 @@ func (this *DistributedEntityMgr) DeleteDistributeLocks() {
 			fields = append(fields, entityIdStr)
 		}
 	}
+	// 统计实际删除数:某批失败时其fields残留,由下次启动的DeleteDistributeLocks再次清理
+	var deleted int64
 	for i := 0; i < len(fields); i += 500 {
 		end := i + 500
 		if end > len(fields) {
 			end = len(fields)
 		}
-		// 失败仅告警不中断:残留的锁field由下次启动的DeleteDistributeLocks再次清理
-		if _, err := this.cache.HDel(this.distributedLockName, fields[i:end]...); IsRedisError(err) {
+		// 失败仅告警不中断
+		if n, err := this.cache.HDel(this.distributedLockName, fields[i:end]...); IsRedisError(err) {
 			glog.Error("DeleteDistributeLocks HDel error", "lockName", this.distributedLockName, "err", err)
+		} else {
+			deleted += n
 		}
 	}
-	glog.Info("DeleteDistributeLocks", "lockName", this.distributedLockName, "deleted", len(fields))
+	glog.Info("DeleteDistributeLocks", "lockName", this.distributedLockName, "matched", len(fields), "deleted", deleted)
 }
 
 // 重新平衡
