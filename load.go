@@ -659,7 +659,10 @@ func FixEntityDataFromCache(entity Entity, db EntityDb, kvCache KvCache, cacheKe
 				glog.Error("Save", "entityKey", entityKey, "component", component.GetName(), "err", err)
 				return true
 			}
-			saveDbErr := db.SaveComponent(entityKey, GetComponentSaveName(component), saveData)
+			// 按需附加分片键条件(entityDb+entity均支持时直达分片,见save.go的resolveShardKey)
+			// NOTE:分片键值必须与文档中该字段的值一致:不一致时UpdateOne匹配0条且不报错,
+			// 下方的"写库成功后删缓存"防线会失效(缓存被删但数据未落库),造成数据丢失
+			saveDbErr := saveComponentOptionalShardKey(db, entity, entityKey, GetComponentSaveName(component), saveData)
 			if saveDbErr != nil {
 				glog.Error("SaveDb", "entityKey", entityKey, "component", component.GetName(), "err", saveDbErr)
 				return true
@@ -699,7 +702,8 @@ func FixEntityDataFromCache(entity Entity, db EntityDb, kvCache KvCache, cacheKe
 					continue
 				}
 				//glog.Debug("saveData", "value", saveData)
-				saveDbErr := db.SaveComponentField(entityKey, GetComponentSaveName(component), childStruct.Name, saveData)
+				// 按需附加分片键条件(同上,分片键值必须与文档一致,否则缓存删除防线失效)
+				saveDbErr := saveComponentFieldOptionalShardKey(db, entity, entityKey, GetComponentSaveName(component), childStruct.Name, saveData)
 				if saveDbErr != nil {
 					glog.Error("SaveDb", "entityKey", entityKey, "component", component.GetName(), "field", childStruct.Name, "err", saveDbErr)
 					continue

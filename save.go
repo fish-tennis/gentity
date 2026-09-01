@@ -280,17 +280,41 @@ func SaveMapValueToCache(kvCache KvCache, cacheKeyName string, val reflect.Value
 	}
 }
 
-// saveComponentsOptionalShardKey 保存组件变更数据,按需附加分片键条件
-// 检测到entityDb的分片键列已启用且entity提供分片键值(ShardKeyProvider)时,
-// 附加分片键条件直达目标分片;否则退化为常规SaveComponents
-// (分片集群下广播,不影响正确性,便于渐进式启用)
-func saveComponentsOptionalShardKey(entityDb EntityDb, entity Entity, entityKey interface{}, changedData map[string]any) error {
+// resolveShardKey 检测entityDb+entity的可选分片键支持
+// 返回的ShardKeyEntityDb非nil表示已启用(同时返回分片键值),nil表示退化为常规操作
+// 条件:entityDb的分片键列已启用(ShardKeyName非空)且entity提供分片键值(ShardKeyProvider)
+func resolveShardKey(entityDb EntityDb, entity Entity) (ShardKeyEntityDb, interface{}) {
 	if shardDb, ok := entityDb.(ShardKeyEntityDb); ok && shardDb.ShardKeyName() != "" {
 		if provider, ok := entity.(ShardKeyProvider); ok {
-			return shardDb.SaveComponentsWithShardKey(provider.GetShardKeyValue(), entityKey, changedData)
+			return shardDb, provider.GetShardKeyValue()
 		}
 	}
+	return nil, nil
+}
+
+// saveComponentsOptionalShardKey 批量保存组件变更数据,按需附加分片键条件直达目标分片
+// 未启用分片键时退化为常规SaveComponents(分片集群下广播,不影响正确性,便于渐进式启用)
+func saveComponentsOptionalShardKey(entityDb EntityDb, entity Entity, entityKey interface{}, changedData map[string]any) error {
+	if shardDb, shardKeyValue := resolveShardKey(entityDb, entity); shardDb != nil {
+		return shardDb.SaveComponentsWithShardKey(shardKeyValue, entityKey, changedData)
+	}
 	return entityDb.SaveComponents(entityKey, changedData)
+}
+
+// saveComponentOptionalShardKey 保存单个组件,按需附加分片键条件(见resolveShardKey)
+func saveComponentOptionalShardKey(entityDb EntityDb, entity Entity, entityKey interface{}, componentName string, componentData interface{}) error {
+	if shardDb, shardKeyValue := resolveShardKey(entityDb, entity); shardDb != nil {
+		return shardDb.SaveComponentWithShardKey(shardKeyValue, entityKey, componentName, componentData)
+	}
+	return entityDb.SaveComponent(entityKey, componentName, componentData)
+}
+
+// saveComponentFieldOptionalShardKey 保存组件的单个字段,按需附加分片键条件(见resolveShardKey)
+func saveComponentFieldOptionalShardKey(entityDb EntityDb, entity Entity, entityKey interface{}, componentName string, fieldName string, fieldData interface{}) error {
+	if shardDb, shardKeyValue := resolveShardKey(entityDb, entity); shardDb != nil {
+		return shardDb.SaveComponentFieldWithShardKey(shardKeyValue, entityKey, componentName, fieldName, fieldData)
+	}
+	return entityDb.SaveComponentField(entityKey, componentName, fieldName, fieldData)
 }
 
 // Entity的变化数据保存到数据库

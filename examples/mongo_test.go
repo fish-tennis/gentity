@@ -433,3 +433,72 @@ func TestSaveEntityChangedDataToDbWithShardKey(t *testing.T) {
 	// 清理
 	playerDb.DeleteEntity(playerId)
 }
+
+// 验证FixEntityDataFromCache(服务器重启后修复crash缓存数据)按需附加分片键条件:
+// Player实现ShardKeyProvider + SetShardKeyName("AccountId")后,
+// 修复链路写库走WithShardKey变体(filter含AccountId)
+// 断言技巧与TestSaveEntityChangedDataToDbWithShardKey相同:
+// 错误的AccountId→filter匹配不到→数据不更新;正确的AccountId→更新成功
+func TestFixEntityDataFromCacheWithShardKey(t *testing.T) {
+	const collectionName = "player_fixdb"
+	const (
+		accountId = int64(300)
+		playerId  = int64(301)
+	)
+	mongoDb := gentity.NewMongoDb(_mongoUri, _mongoDbName)
+	playerDb := mongoDb.RegisterPlayerDb(collectionName, gentity.ShardKeyNone, "_id", "AccountId", "RegionId")
+	if !mongoDb.Connect() {
+		t.Fatal("connect db error")
+	}
+	defer mongoDb.Disconnect()
+	playerDb.(*gentity.MongoCollectionPlayer).SetShardKeyName("AccountId")
+	kvCache := initRedis()
+	ctx := context.Background()
+
+	// 文档中是否存在BaseInfo组件字段(组件保存名大小写随配置,用EqualFold匹配)
+	hasBaseInfoField := func() bool {
+		var doc bson.M
+		if err := mongoDb.GetMongoDatabase().Collection(collectionName).
+			FindOne(ctx, bson.D{{Key: "_id", Value: playerId}}).Decode(&doc); err != nil {
+			t.Fatalf("FindOne: %v", err)
+		}
+		for k := range doc {
+			if strings.EqualFold(k, "baseinfo") {
+				return true
+			}
+		}
+		return false
+	}
+
+	// 模拟"写缓存成功但未落库就crash"的修复流程
+	fixFlow := func(p *Player) {
+		playerDb.DeleteEntity(p.GetId())
+		if err, _ := playerDb.InsertEntity(p.GetId(), bson.M{
+			"_id": p.GetId(), "AccountId": accountId, "RegionId": 1,
+		}); err != nil {
+			t.Fatalf("InsertEntity: %v", err)
+		}
+		// 脏数据写缓存(模拟crash前的最后一次缓存保存)
+		p.GetBaseInfo().AddExp(100)
+		if err := p.SaveCache(kvCache); err != nil {
+			t.Fatalf("SaveCache: %v", err)
+		}
+		// 重启后修复:读缓存->写数据库->成功才删缓存
+		gentity.FixEntityDataFromCache(p, playerDb, kvCache, "p", p.GetId())
+	}
+
+	// 1.错误的AccountId(999):分片键条件生效→filter匹配不到→数据不更新
+	fixFlow(newTestPlayer(playerId, accountId+999))
+	if hasBaseInfoField() {
+		t.Fatal("fix with mismatched shardKey should NOT update db")
+	}
+
+	// 2.正确的AccountId:filter匹配→缓存数据落库
+	fixFlow(newTestPlayer(playerId, accountId))
+	if !hasBaseInfoField() {
+		t.Fatal("fix with matched shardKey should update db")
+	}
+
+	// 清理
+	playerDb.DeleteEntity(playerId)
+}
