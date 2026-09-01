@@ -257,14 +257,23 @@ return 0
 	// KEYS[1]: 目标hash key
 	// ARGV[1]: 期望值(值等于它的field才会被删除)
 	// 返回: 删除的field数量
+	// 先收集全部匹配field,再分批批量HDEL,避免逐field单次HDEL的命令开销
 	luaHDelFieldsByValue = redis.NewScript(`
 local all = redis.call('HGETALL', KEYS[1])
-local n = 0
+local fields = {}
 for i = 1, #all, 2 do
 	if all[i+1] == ARGV[1] then
-		redis.call('HDEL', KEYS[1], all[i])
-		n = n + 1
+		fields[#fields + 1] = all[i]
 	end
+end
+local n = #fields
+-- 分批HDEL:单次unpack的参数个数受Lua栈上限约束(LUAI_MAXCSTACK,通常8000)
+for i = 1, n, 500 do
+	local hdelArgs = {KEYS[1]}
+	for j = i, math.min(i + 499, n) do
+		hdelArgs[#hdelArgs + 1] = fields[j]
+	end
+	redis.call('HDEL', unpack(hdelArgs))
 end
 return n
 `)

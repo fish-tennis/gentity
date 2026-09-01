@@ -3,6 +3,7 @@ package gentity
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"strings"
 	"sync/atomic"
 
@@ -90,14 +91,23 @@ end
 -- keys[1]: 目标hash key
 -- args[1]: 期望值(值等于它的field才会被删除)
 -- 返回: 删除的field数量
+-- 先收集全部匹配field,再分批批量HDEL,避免逐field单次HDEL的命令开销
 local function hdel_fields_by_value(keys, args)
 	local all = redis.call('HGETALL', keys[1])
-	local n = 0
+	local fields = {}
 	for i = 1, #all, 2 do
 		if all[i+1] == args[1] then
-			redis.call('HDEL', keys[1], all[i])
-			n = n + 1
+			fields[#fields + 1] = all[i]
 		end
+	end
+	local n = #fields
+	-- 分批HDEL:单次unpack的参数个数受Lua栈上限约束(LUAI_MAXCSTACK,通常8000)
+	for i = 1, n, 500 do
+		local hdelArgs = {keys[1]}
+		for j = i, math.min(i + 499, n) do
+			hdelArgs[#hdelArgs + 1] = fields[j]
+		end
+		redis.call('HDEL', unpack(hdelArgs))
 	end
 	return n
 end
@@ -137,6 +147,10 @@ const (
 	funcStateUnavailable = int32(2) // 不可用(版本低于7.0或库未安装),回退EVAL
 )
 
+// fcall不可用错误的匹配:Redis返回"unknown command 'FCALL'",miniredis返回"unknown command `fcall`",
+// 引号可选(兼容无引号变体),fcall后必须紧跟词边界,避免错误文案其他位置恰好出现"fcall"字样而误判
+var fcallUnknownCmdRegex = regexp.MustCompile(`unknown command ['"` + "`" + `]?fcall\b`)
+
 // isFunctionsUnavailableError 判断错误是否表示"Function能力不可用"
 // - Redis < 7.0: ERR unknown command 'FCALL'
 // - 库未安装或函数不存在(Redis 7.x实测): ERR Function not found
@@ -147,7 +161,9 @@ func isFunctionsUnavailableError(err error) bool {
 		return false
 	}
 	msg := strings.ToLower(err.Error())
-	return strings.Contains(msg, "unknown command") ||
+	// NOTE:"unknown command"必须紧跟命令名fcall才认定为Function能力缺失:
+	// 泛匹配面太宽,代理/中间件/云Redis的错误文案若恰好含该子串会误触发永久降级
+	return fcallUnknownCmdRegex.MatchString(msg) ||
 		strings.Contains(msg, "function not found") ||
 		strings.Contains(msg, "no function named") ||
 		strings.Contains(msg, "no function library")
@@ -189,7 +205,11 @@ func (this *FunctionRunner) Run(name string, keys []string, args ...interface{})
 		}
 		if isFunctionsUnavailableError(err) {
 			// Function不可用,此后直接走EVAL,不再重复尝试FCALL
-			this.state.Store(funcStateUnavailable)
+			// Swap保证状态翻转只发生一次,降级日志不会每次调用都刷屏;
+			// 打Warn而非静默:降级后丧失Function的持久化/审计能力,需可感知
+			if old := this.state.Swap(funcStateUnavailable); old != funcStateUnavailable {
+				glog.Warn("Redis Function unavailable, fallback to EVAL", "err", err, "function", name)
+			}
 		} else {
 			return nil, err
 		}

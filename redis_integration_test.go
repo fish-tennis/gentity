@@ -29,7 +29,7 @@ func newRealRedisCache(t *testing.T) *RedisCache {
 		// 恢复环境:删除测试key与函数库(下次运行会重新安装)
 		client.Del(context.Background(),
 			"gtest:map", "gtest:upd", "gtest:lock", "gtest:conc", "gtest:dlock",
-			"gtest:replace", "gtest:cons:a", "gtest:cons:b")
+			"gtest:replace", "gtest:cons:a", "gtest:cons:b", "gtest:batchdel")
 		client.FunctionDelete(context.Background(), "gentity")
 		client.Close()
 	})
@@ -100,6 +100,47 @@ func TestRealRedis_InstallAndFCall(t *testing.T) {
 	}
 
 	// 全部操作走的是FCALL路径
+	if cache.funcRunner.state.Load() != funcStateAvailable {
+		t.Fatalf("expected FCALL state, got %v", cache.funcRunner.state.Load())
+	}
+}
+
+// TestRealRedis_HDelFieldsByValueBatch 验证FCALL路径的分批HDEL(>500个field跨批次)
+// 回归保护:EVAL(redis_cache.go)与FCALL(redis_function.go)是两份独立维护的Lua拷贝,
+// miniredis不支持FUNCTION只能测EVAL份,本测试防止将来只改其中一份导致分批逻辑不一致
+func TestRealRedis_HDelFieldsByValueBatch(t *testing.T) {
+	cache := newRealRedisCache(t)
+	requireFunctionsInstalled(t, cache)
+
+	key := "gtest:batchdel"
+	const total = 1200 // 500+500+200,跨3批
+	fields := make(map[string]interface{}, total)
+	for i := 0; i < total; i++ {
+		fields[fmt.Sprintf("%v", i)] = "1"
+	}
+	if err := cache.SetMap(key, fields); err != nil {
+		t.Fatal(err)
+	}
+	// 混入其他值的field,验证不会被误删
+	if _, err := cache.HSet(key, "other", "2"); err != nil {
+		t.Fatal(err)
+	}
+	deleted, err := cache.HDelFieldsByValue(key, "1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if deleted != total {
+		t.Fatalf("FCALL deleted=%v want=%v", deleted, total)
+	}
+	m, _ := cache.HGetAll(key)
+	if len(m) != 1 || m["other"] != "2" {
+		t.Fatalf("FCALL residue: %v", m)
+	}
+	// 二次调用:无匹配返回0,验证跨批次循环终止
+	if deleted, err = cache.HDelFieldsByValue(key, "1"); err != nil || deleted != 0 {
+		t.Fatalf("second call deleted=%v err=%v", deleted, err)
+	}
+	// 确认走的是FCALL路径而非静默降级
 	if cache.funcRunner.state.Load() != funcStateAvailable {
 		t.Fatalf("expected FCALL state, got %v", cache.funcRunner.state.Load())
 	}

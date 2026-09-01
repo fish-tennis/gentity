@@ -1,6 +1,7 @@
 package gentity
 
 import (
+	"strconv"
 	"testing"
 
 	"github.com/alicebob/miniredis/v2"
@@ -181,5 +182,39 @@ func TestHDelFieldsByValue(t *testing.T) {
 	deleted, err = cache.HDelFieldsByValue(key, "3")
 	if err != nil || deleted != 0 {
 		t.Fatalf("deleted=%v err=%v", deleted, err)
+	}
+}
+
+// 验证HDelFieldsByValue分批HDEL逻辑:field数超过单批上限(500)时跨批次正确删除
+// 覆盖lua脚本中math.min(i+499, n)的批次边界
+func TestHDelFieldsByValueBatch(t *testing.T) {
+	cache, _ := newScriptTestCache(t)
+	key := "test:cleanup_batch"
+	const total = 1200 // 500+500+200,跨3批
+	fields := make(map[string]interface{}, total)
+	for i := 0; i < total; i++ {
+		fields[strconv.Itoa(i)] = "1"
+	}
+	if err := cache.SetMap(key, fields); err != nil {
+		t.Fatal(err)
+	}
+	// 混入其他值的field,验证不会被误删
+	if _, err := cache.HSet(key, "other", "2"); err != nil {
+		t.Fatal(err)
+	}
+	deleted, err := cache.HDelFieldsByValue(key, "1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if deleted != total {
+		t.Fatalf("deleted=%v want=%v", deleted, total)
+	}
+	m, _ := cache.HGetAll(key)
+	if len(m) != 1 || m["other"] != "2" {
+		t.Fatalf("HDelFieldsByValue batch err: %v", m)
+	}
+	// 第二批之后剩余0个匹配,验证跨批次循环终止
+	if deleted, err = cache.HDelFieldsByValue(key, "1"); err != nil || deleted != 0 {
+		t.Fatalf("second call deleted=%v err=%v", deleted, err)
 	}
 }

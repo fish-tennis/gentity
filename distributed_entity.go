@@ -69,7 +69,7 @@ func (this *DistributedEntityMgr) LoadEntity(entityId int64, entityData interfac
 	// 到数据库加载数据
 	exist, err := this.entityDb.FindEntityById(entityId, entityData)
 	if err != nil {
-		glog.Debug("LoadEntity", "err", err, "entityId", entityId)
+		glog.Error("LoadEntity", "err", err, "entityId", entityId)
 		return nil
 	}
 	if !exist {
@@ -78,7 +78,7 @@ func (this *DistributedEntityMgr) LoadEntity(entityId int64, entityData interfac
 	// 加载的数据生成实体对象
 	newEntity := this.distributedEntityHelper.CreateEntity(entityData)
 	if newEntity == nil {
-		glog.Debug("LoadEntity newEntity==nil", "entityId", entityId)
+		glog.Error("LoadEntity newEntity==nil", "entityId", entityId)
 		return nil
 	}
 	// 先在写锁外获取分布式锁,避免持锁期间执行Redis网络IO导致其它实体操作被串行化阻塞
@@ -145,7 +145,7 @@ func (this *DistributedEntityMgr) DistributeLock(entityId int64) bool {
 			glog.Error("DistributeLock failed", "lockName", this.distributedLockName, "entityId", entityId)
 			return false
 		}
-		glog.Debug("DistributeLock", "lockName", this.distributedLockName, "entityId", entityId)
+		glog.Info("DistributeLock", "lockName", this.distributedLockName, "entityId", entityId)
 		return true
 	}
 	// 回退:不支持脚本的缓存系统,使用HSetNX
@@ -159,7 +159,7 @@ func (this *DistributedEntityMgr) DistributeLock(entityId int64) bool {
 		glog.Error("DistributeLock failed", "lockName", this.distributedLockName, "entityId", entityId)
 		return false
 	}
-	glog.Debug("DistributeLock", "lockName", this.distributedLockName, "entityId", entityId)
+	glog.Info("DistributeLock", "lockName", this.distributedLockName, "entityId", entityId)
 	return true
 }
 
@@ -176,11 +176,11 @@ func (this *DistributedEntityMgr) DistributeUnlock(entityId int64) {
 		if IsRedisError(err) {
 			glog.Error("DistributeUnlock", "lockName", this.distributedLockName, "entityId", entityId, "err", err)
 		}
-		glog.Debug("DistributeUnlock", "lockName", this.distributedLockName, "entityId", entityId)
+		glog.Info("DistributeUnlock", "lockName", this.distributedLockName, "entityId", entityId)
 		return
 	}
 	this.cache.HDel(this.distributedLockName, util.Itoa(entityId))
-	glog.Debug("DistributeUnlock", "lockName", this.distributedLockName, "entityId", entityId)
+	glog.Info("DistributeUnlock", "lockName", this.distributedLockName, "entityId", entityId)
 }
 
 // 删除跟本服关联的分布式锁
@@ -195,21 +195,33 @@ func (this *DistributedEntityMgr) DeleteDistributeLocks() {
 			glog.Error("DeleteDistributeLocks", "lockName", this.distributedLockName, "err", err)
 			return
 		}
-		glog.Debug("DeleteDistributeLocks", "lockName", this.distributedLockName, "deleted", deleted)
+		glog.Info("DeleteDistributeLocks", "lockName", this.distributedLockName, "deleted", deleted)
 		return
 	}
-	// 回退:HGetAll快照+逐个HDel(存在快照竞态,仅用于不支持脚本的缓存系统)
+	// 回退:HGetAll快照+批量HDel(存在快照竞态,仅用于不支持脚本的缓存系统)
 	kv, err := this.cache.HGetAll(this.distributedLockName)
 	if IsRedisError(err) {
 		glog.Error("DeleteDistributeLocks", "lockName", this.distributedLockName, "err", err)
 		return
 	}
+	// 先收集全部属于本服的field,再分批批量HDel,避免逐field一次网络往返
+	fields := make([]string, 0, len(kv))
 	for entityIdStr, serverIdStr := range kv {
 		if util.Atoi(serverIdStr) == int(GetApplication().GetId()) {
-			this.cache.HDel(this.distributedLockName, entityIdStr)
-			glog.Debug("DeleteDistributeLocks", "lockName", this.distributedLockName, "entityId", entityIdStr)
+			fields = append(fields, entityIdStr)
 		}
 	}
+	for i := 0; i < len(fields); i += 500 {
+		end := i + 500
+		if end > len(fields) {
+			end = len(fields)
+		}
+		// 失败仅告警不中断:残留的锁field由下次启动的DeleteDistributeLocks再次清理
+		if _, err := this.cache.HDel(this.distributedLockName, fields[i:end]...); IsRedisError(err) {
+			glog.Error("DeleteDistributeLocks HDel error", "lockName", this.distributedLockName, "err", err)
+		}
+	}
+	glog.Info("DeleteDistributeLocks", "lockName", this.distributedLockName, "deleted", len(fields))
 }
 
 // 重新平衡
@@ -221,7 +233,7 @@ func (this *DistributedEntityMgr) ReBalance() {
 		if this.distributedEntityHelper.RouteServerId(entity.GetId()) != GetApplication().GetId() {
 			// 通知已不属于本服务器管理的实体关闭协程
 			entity.Stop()
-			glog.Debug("distributedEntity stop", "entityId", entity.GetId())
+			glog.Info("distributedEntity stop", "entityId", entity.GetId())
 		}
 	}
 }
@@ -233,7 +245,7 @@ func (this *DistributedEntityMgr) StopAll() {
 	for _, entity := range this.entityMap {
 		// 通知已不属于本服务器管理的实体关闭协程
 		entity.Stop()
-		glog.Debug("distributedEntity stop", "entityId", entity.GetId())
+		glog.Info("distributedEntity stop", "entityId", entity.GetId())
 	}
 }
 
