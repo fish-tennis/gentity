@@ -101,6 +101,61 @@ func (this *Quest) TriggerPlayerEntryGame(event *EventPlayerEntryGame) {
 
 ![distributed entity](https://github.com/fish-tennis/doc/blob/master/imgs/gentity/distributedentity.png)
 
+## 数据库分片(MongoDB Sharding)
+分片是可选项:注册collection时通过`ShardKeyType`指定分片方式,`ShardKeyNone`表示不分片
+
+```go
+const (
+	ShardKeyNone   // 不分片(默认)
+	ShardKeyRange  // range分片
+	ShardKeyHashed // hashed分片
+)
+
+mongoDb := gentity.NewMongoDb(uri, dbName)
+// 注册时声明分片方式(必须在Connect()之前)
+mongoDb.RegisterPlayerDb("player", gentity.ShardKeyHashed, "_id", "AccountId", "RegionId")
+mongoDb.RegisterEntityDb("guild", gentity.ShardKeyNone, "_id")
+// Connect()会为已注册的collection回填连接并创建唯一索引
+mongoDb.Connect()
+// 分片集群环境下执行enableSharding+shardCollection(单机mongo无此命令,属预期降级)
+mongoDb.ShardDatabase(dbName)
+```
+
+### 分片键与uniqueId不同的collection
+典型场景:player表分片键为`AccountId`,而entityKey是`_id`(playerId)
+
+分片集群下,按entityKey的读写不含分片键时会被mongos广播到所有分片.gentity提供两个可选接口解决:
+
+- collection侧:`SetShardKeyName`启用`ShardKeyEntityDb`,读写方法可附加分片键条件直达目标分片
+- entity侧:实现`ShardKeyProvider`,存盘链路(`SaveEntityChangedDataToDb`)自动附加分片键条件
+
+```go
+// 注册时启用分片键附加条件(分片键列AccountId,与uniqueId _id不同)
+playerDb := mongoDb.RegisterPlayerDb("player", gentity.ShardKeyHashed, "_id", "AccountId", "RegionId")
+playerDb.(*gentity.MongoCollectionPlayer).SetShardKeyName("AccountId")
+
+// entity实现ShardKeyProvider,提供分片键的值
+func (this *Player) GetShardKeyValue() interface{} {
+	return this.AccountId
+}
+
+// 此后玩家存盘(SaveEntityChangedDataToDb)自动附加分片键条件,直达分片;
+// 显式读写也可以附加分片键条件:
+if shardDb, ok := playerDb.(gentity.ShardKeyEntityDb); ok {
+	shardDb.FindEntityByIdWithShardKey(accountId, playerId, &playerData)
+	shardDb.SaveComponentWithShardKey(accountId, playerId, "Bag", bagData)
+}
+```
+
+设计原则:未附加分片键时仅性能退化为广播,不影响正确性,因此可以渐进式启用;`InsertEntity`无需分片键变体(插入的文档本身携带分片键字段,mongos自动按其路由),按分片键列查询的接口(如`FindPlayerIdByAccountId`)天然直达
+
+分片环境说明:分片集合的唯一索引必须以分片键为前缀,因此分片键不再是`_id`时,`_id`的唯一性由应用层保证(如全局自增id分配);角色名等与分片键无关的全局唯一约束无法再用唯一索引保证
+
+相关示例与测试(gentity/examples/mongo_test.go):
+- `TestShardKeyEntityDb`:分片键附加条件的读写语义(单机mongo可跑)
+- `TestSaveEntityChangedDataToDbWithShardKey`:存盘链路自动附加分片键(单机mongo可跑)
+- `TestShardKeyRoutingOnShardedCluster`:分片集群下explain验证直达/广播路由(需gserver的docker/mongo_sharded环境,未就绪时自动Skip)
+
 ## 项目演示
 分布式游戏服务器框架[gserver](https://github.com/fish-tennis/gserver)
 
