@@ -26,8 +26,10 @@ func (this *MongoKvDb) GetCollection() *mongo.Collection {
 }
 
 func (this *MongoKvDb) Find(key interface{}) (interface{}, error) {
+	ctx, cancel := opCtx()
+	defer cancel()
 	col := this.mongoDatabase.Collection(this.collectionName)
-	result := col.FindOne(context.Background(), bson.D{{Key: this.keyName, Value: key}})
+	result := col.FindOne(ctx, bson.D{{Key: this.keyName, Value: key}})
 	if result == nil || result.Err() == mongo.ErrNoDocuments {
 		return nil, nil
 	}
@@ -40,10 +42,12 @@ func (this *MongoKvDb) Find(key interface{}) (interface{}, error) {
 }
 
 func (this *MongoKvDb) FindAndDecode(key interface{}, decodeData interface{}) error {
+	ctx, cancel := opCtx()
+	defer cancel()
 	col := this.mongoDatabase.Collection(this.collectionName)
 	opts := options.FindOne().
 		SetProjection(bson.D{{Key: this.valueName, Value: 1}})
-	result := col.FindOne(context.Background(), bson.D{{Key: this.keyName, Value: key}}, opts)
+	result := col.FindOne(ctx, bson.D{{Key: this.keyName, Value: key}}, opts)
 	if result == nil || result.Err() == mongo.ErrNoDocuments {
 		return nil
 	}
@@ -56,8 +60,10 @@ func (this *MongoKvDb) FindAndDecode(key interface{}, decodeData interface{}) er
 }
 
 func (this *MongoKvDb) Insert(key interface{}, value interface{}) (err error, isDuplicateKey bool) {
+	ctx, cancel := opCtx()
+	defer cancel()
 	col := this.mongoDatabase.Collection(this.collectionName)
-	_, err = col.InsertOne(context.Background(),
+	_, err = col.InsertOne(ctx,
 		bson.D{{Key: this.keyName, Value: key}, {Key: this.valueName, Value: value}})
 	if err != nil {
 		isDuplicateKey = IsDuplicateKeyError(err)
@@ -66,9 +72,11 @@ func (this *MongoKvDb) Insert(key interface{}, value interface{}) (err error, is
 }
 
 func (this *MongoKvDb) Update(key interface{}, value interface{}, upsert bool) error {
+	ctx, cancel := opCtx()
+	defer cancel()
 	col := this.mongoDatabase.Collection(this.collectionName)
 	opt := options.UpdateOne().SetUpsert(upsert)
-	_, err := col.UpdateOne(context.Background(),
+	_, err := col.UpdateOne(ctx,
 		bson.D{{Key: this.keyName, Value: key}},
 		bson.D{{Key: "$set", Value: bson.D{{Key: this.valueName, Value: value}}}},
 		opt)
@@ -76,9 +84,11 @@ func (this *MongoKvDb) Update(key interface{}, value interface{}, upsert bool) e
 }
 
 func (this *MongoKvDb) Inc(key interface{}, value interface{}, upsert bool) (interface{}, error) {
+	ctx, cancel := opCtx()
+	defer cancel()
 	col := this.mongoDatabase.Collection(this.collectionName)
 	opt := options.FindOneAndUpdate().SetUpsert(upsert).SetReturnDocument(options.After)
-	updateResult := col.FindOneAndUpdate(context.Background(),
+	updateResult := col.FindOneAndUpdate(ctx,
 		bson.D{{Key: this.keyName, Value: key}},
 		bson.D{{Key: "$inc", Value: bson.D{{Key: this.valueName, Value: value}}}},
 		opt)
@@ -91,8 +101,10 @@ func (this *MongoKvDb) Inc(key interface{}, value interface{}, upsert bool) (int
 }
 
 func (this *MongoKvDb) Delete(key interface{}) error {
+	ctx, cancel := opCtx()
+	defer cancel()
 	col := this.mongoDatabase.Collection(this.collectionName)
-	_, err := col.DeleteOne(context.Background(), bson.D{{Key: this.keyName, Value: key}})
+	_, err := col.DeleteOne(ctx, bson.D{{Key: this.keyName, Value: key}})
 	return err
 }
 

@@ -5,8 +5,8 @@ import (
 )
 
 // 获取当前时间戳(秒)
-func GetCurrentTimeStamp() uint32 {
-	return uint32(time.Now().Unix())
+func GetCurrentTimeStamp() int64 {
+	return time.Now().Unix()
 }
 
 // 获取当前毫秒数(毫秒,0.001秒)

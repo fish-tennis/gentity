@@ -7,7 +7,40 @@ import (
 	"go.mongodb.org/mongo-driver/v2/mongo"
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
 	"go.mongodb.org/mongo-driver/v2/mongo/readpref"
+	"sync/atomic"
+	"time"
 )
+
+// mongoOpTimeout 单次CRUD操作的超时时间(纳秒)
+// 防止MongoDB卡顿时调用协程被永久阻塞(如玩家协程的滚动存档/下线保存,
+// 一旦阻塞会停顿该玩家的全部消息处理)
+// atomic存储,支持应用层在运行中调整(如根据MongoDB负载动态放宽/收紧)
+var mongoOpTimeout atomic.Int64
+
+func init() {
+	SetMongoOpTimeout(5 * time.Second)
+}
+
+// SetMongoOpTimeout 设置单次CRUD操作超时时间,应用层可在启动时或运行中调整
+// d<=0时忽略,保持原值,防止误设为非正值导致所有操作立即超时
+func SetMongoOpTimeout(d time.Duration) {
+	if d <= 0 {
+		return
+	}
+	mongoOpTimeout.Store(int64(d))
+}
+
+// GetMongoOpTimeout 查询单次CRUD操作超时时间
+func GetMongoOpTimeout() time.Duration {
+	return time.Duration(mongoOpTimeout.Load())
+}
+
+// opCtx 构造带超时的操作context,用于运行时CRUD操作
+// 启动/关闭路径(Connect/Ping/Disconnect/Shard/CreateIndex)仍用context.Background(),
+// 避免初始化建索引、分片等慢操作被误杀
+func opCtx() (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.Background(), GetMongoOpTimeout())
+}
 
 // https://github.com/uber-go/guide/blob/master/style.md#verify-interface-compliance
 var _ PlayerDb = (*MongoCollectionPlayer)(nil)
@@ -111,8 +144,10 @@ func (this *MongoCollection) FindEntityById(entityKey interface{}, data interfac
 	if len(this.uniqueId) == 0 {
 		return false, ErrNoUniqueColumn
 	}
+	ctx, cancel := opCtx()
+	defer cancel()
 	col := this.mongoDatabase.Collection(this.collectionName)
-	result := col.FindOne(context.Background(), bson.D{{Key: this.uniqueId, Value: entityKey}})
+	result := col.FindOne(ctx, bson.D{{Key: this.uniqueId, Value: entityKey}})
 	if result == nil || result.Err() == mongo.ErrNoDocuments {
 		return false, nil
 	}
@@ -124,8 +159,10 @@ func (this *MongoCollection) FindEntityById(entityKey interface{}, data interfac
 }
 
 func (this *MongoCollection) InsertEntity(entityKey interface{}, entityData interface{}) (err error, isDuplicateKey bool) {
+	ctx, cancel := opCtx()
+	defer cancel()
 	col := this.mongoDatabase.Collection(this.collectionName)
-	_, err = col.InsertOne(context.Background(), entityData)
+	_, err = col.InsertOne(ctx, entityData)
 	if err != nil {
 		isDuplicateKey = IsDuplicateKeyError(err)
 	}
@@ -133,20 +170,26 @@ func (this *MongoCollection) InsertEntity(entityKey interface{}, entityData inte
 }
 
 func (this *MongoCollection) SaveEntity(entityKey interface{}, entityData interface{}) error {
+	ctx, cancel := opCtx()
+	defer cancel()
 	col := this.mongoDatabase.Collection(this.collectionName)
-	_, err := col.UpdateOne(context.Background(), bson.D{{Key: this.uniqueId, Value: entityKey}}, entityData)
+	_, err := col.UpdateOne(ctx, bson.D{{Key: this.uniqueId, Value: entityKey}}, entityData)
 	return err
 }
 
 func (this *MongoCollection) DeleteEntity(entityKey interface{}) error {
+	ctx, cancel := opCtx()
+	defer cancel()
 	col := this.mongoDatabase.Collection(this.collectionName)
-	_, err := col.DeleteOne(context.Background(), bson.D{{Key: this.uniqueId, Value: entityKey}})
+	_, err := col.DeleteOne(ctx, bson.D{{Key: this.uniqueId, Value: entityKey}})
 	return err
 }
 
 func (this *MongoCollection) SaveComponent(entityKey interface{}, componentName string, componentData interface{}) error {
+	ctx, cancel := opCtx()
+	defer cancel()
 	col := this.mongoDatabase.Collection(this.collectionName)
-	_, updateErr := col.UpdateOne(context.Background(), bson.D{{Key: this.uniqueId, Value: entityKey}},
+	_, updateErr := col.UpdateOne(ctx, bson.D{{Key: this.uniqueId, Value: entityKey}},
 		bson.D{{Key: "$set", Value: bson.D{{Key: componentName, Value: componentData}}}})
 	if updateErr != nil {
 		return updateErr
@@ -158,9 +201,11 @@ func (this *MongoCollection) SaveComponents(entityKey interface{}, components ma
 	if len(components) == 0 {
 		return nil
 	}
+	ctx, cancel := opCtx()
+	defer cancel()
 	col := this.mongoDatabase.Collection(this.collectionName)
 	// filter含唯一键(Connect时建了唯一索引),最多匹配1个文档,UpdateOne语义准确
-	_, updateErr := col.UpdateOne(context.Background(), bson.D{{Key: this.uniqueId, Value: entityKey}},
+	_, updateErr := col.UpdateOne(ctx, bson.D{{Key: this.uniqueId, Value: entityKey}},
 		bson.D{{Key: "$set", Value: components}})
 	if updateErr != nil {
 		return updateErr
@@ -169,10 +214,12 @@ func (this *MongoCollection) SaveComponents(entityKey interface{}, components ma
 }
 
 func (this *MongoCollection) SaveComponentField(entityKey interface{}, componentName string, fieldName string, fieldData interface{}) error {
+	ctx, cancel := opCtx()
+	defer cancel()
 	col := this.mongoDatabase.Collection(this.collectionName)
 	// NOTE:如果player.ComponentName == null
 	// 直接更新player.ComponentName.fieldName会报错: Cannot create field 'fieldName' in element
-	_, updateErr := col.UpdateOne(context.Background(), bson.D{{Key: this.uniqueId, Value: entityKey}},
+	_, updateErr := col.UpdateOne(ctx, bson.D{{Key: this.uniqueId, Value: entityKey}},
 		bson.D{{Key: "$set", Value: bson.D{{Key: componentName + "." + fieldName, Value: fieldData}}}})
 	if updateErr != nil {
 		return updateErr
@@ -190,7 +237,9 @@ func (this *MongoCollection) DeleteComponentField(entityKey interface{}, compone
 	for _, name := range fieldName {
 		fieldNames = append(fieldNames, bson.E{Key: componentName + "." + name})
 	}
-	_, updateErr := col.UpdateOne(context.Background(), bson.D{{Key: this.uniqueId, Value: entityKey}},
+	ctx, cancel := opCtx()
+	defer cancel()
+	_, updateErr := col.UpdateOne(ctx, bson.D{{Key: this.uniqueId, Value: entityKey}},
 		bson.D{{Key: "$unset", Value: fieldNames}})
 	if updateErr != nil {
 		return updateErr
@@ -236,8 +285,10 @@ func (this *MongoCollection) FindEntityByIdWithShardKey(shardKeyValue, entityKey
 	if err := this.checkShardKeyEnabled(); err != nil {
 		return false, err
 	}
+	ctx, cancel := opCtx()
+	defer cancel()
 	col := this.mongoDatabase.Collection(this.collectionName)
-	result := col.FindOne(context.Background(), this.shardFilter(shardKeyValue, entityKey))
+	result := col.FindOne(ctx, this.shardFilter(shardKeyValue, entityKey))
 	if result == nil || result.Err() == mongo.ErrNoDocuments {
 		return false, nil
 	}
@@ -253,8 +304,10 @@ func (this *MongoCollection) SaveEntityWithShardKey(shardKeyValue, entityKey int
 	if err := this.checkShardKeyEnabled(); err != nil {
 		return err
 	}
+	ctx, cancel := opCtx()
+	defer cancel()
 	col := this.mongoDatabase.Collection(this.collectionName)
-	res, err := col.UpdateOne(context.Background(), this.shardFilter(shardKeyValue, entityKey), entityData)
+	res, err := col.UpdateOne(ctx, this.shardFilter(shardKeyValue, entityKey), entityData)
 	if err != nil {
 		return err
 	}
@@ -267,8 +320,10 @@ func (this *MongoCollection) DeleteEntityWithShardKey(shardKeyValue, entityKey i
 	if err := this.checkShardKeyEnabled(); err != nil {
 		return err
 	}
+	ctx, cancel := opCtx()
+	defer cancel()
 	col := this.mongoDatabase.Collection(this.collectionName)
-	_, err := col.DeleteOne(context.Background(), this.shardFilter(shardKeyValue, entityKey))
+	_, err := col.DeleteOne(ctx, this.shardFilter(shardKeyValue, entityKey))
 	return err
 }
 
@@ -277,8 +332,10 @@ func (this *MongoCollection) SaveComponentWithShardKey(shardKeyValue, entityKey 
 	if err := this.checkShardKeyEnabled(); err != nil {
 		return err
 	}
+	ctx, cancel := opCtx()
+	defer cancel()
 	col := this.mongoDatabase.Collection(this.collectionName)
-	res, updateErr := col.UpdateOne(context.Background(), this.shardFilter(shardKeyValue, entityKey),
+	res, updateErr := col.UpdateOne(ctx, this.shardFilter(shardKeyValue, entityKey),
 		bson.D{{Key: "$set", Value: bson.D{{Key: componentName, Value: componentData}}}})
 	if updateErr != nil {
 		return updateErr
@@ -295,9 +352,11 @@ func (this *MongoCollection) SaveComponentsWithShardKey(shardKeyValue, entityKey
 	if err := this.checkShardKeyEnabled(); err != nil {
 		return err
 	}
+	ctx, cancel := opCtx()
+	defer cancel()
 	col := this.mongoDatabase.Collection(this.collectionName)
 	// filter含唯一键,最多匹配1个文档,UpdateOne语义准确
-	res, updateErr := col.UpdateOne(context.Background(), this.shardFilter(shardKeyValue, entityKey),
+	res, updateErr := col.UpdateOne(ctx, this.shardFilter(shardKeyValue, entityKey),
 		bson.D{{Key: "$set", Value: components}})
 	if updateErr != nil {
 		return updateErr
@@ -311,10 +370,12 @@ func (this *MongoCollection) SaveComponentFieldWithShardKey(shardKeyValue, entit
 	if err := this.checkShardKeyEnabled(); err != nil {
 		return err
 	}
+	ctx, cancel := opCtx()
+	defer cancel()
 	col := this.mongoDatabase.Collection(this.collectionName)
 	// NOTE:如果player.ComponentName == null
 	// 直接更新player.ComponentName.fieldName会报错: Cannot create field 'fieldName' in element
-	res, updateErr := col.UpdateOne(context.Background(), this.shardFilter(shardKeyValue, entityKey),
+	res, updateErr := col.UpdateOne(ctx, this.shardFilter(shardKeyValue, entityKey),
 		bson.D{{Key: "$set", Value: bson.D{{Key: componentName + "." + fieldName, Value: fieldData}}}})
 	if updateErr != nil {
 		return updateErr
@@ -336,7 +397,9 @@ func (this *MongoCollection) DeleteComponentFieldWithShardKey(shardKeyValue, ent
 	for _, name := range fieldName {
 		fieldNames = append(fieldNames, bson.E{Key: componentName + "." + name})
 	}
-	res, updateErr := col.UpdateOne(context.Background(), this.shardFilter(shardKeyValue, entityKey),
+	ctx, cancel := opCtx()
+	defer cancel()
+	res, updateErr := col.UpdateOne(ctx, this.shardFilter(shardKeyValue, entityKey),
 		bson.D{{Key: "$unset", Value: fieldNames}})
 	if updateErr != nil {
 		return updateErr
@@ -359,8 +422,10 @@ type MongoCollectionPlayer struct {
 // 根据账号id查找玩家数据
 // 适用于一个账号在一个区服只有一个玩家角色的游戏
 func (this *MongoCollectionPlayer) FindPlayerByAccountId(accountId int64, regionId int32, playerData interface{}) (bool, error) {
+	ctx, cancel := opCtx()
+	defer cancel()
 	col := this.mongoDatabase.Collection(this.collectionName)
-	result := col.FindOne(context.Background(), bson.D{{Key: this.colAccountId, Value: accountId}, {Key: this.colRegionId, Value: regionId}})
+	result := col.FindOne(ctx, bson.D{{Key: this.colAccountId, Value: accountId}, {Key: this.colRegionId, Value: regionId}})
 	if result == nil || result.Err() == mongo.ErrNoDocuments {
 		return false, nil
 	}
@@ -372,10 +437,12 @@ func (this *MongoCollectionPlayer) FindPlayerByAccountId(accountId int64, region
 }
 
 func (this *MongoCollectionPlayer) FindPlayerIdByAccountId(accountId int64, regionId int32) (int64, error) {
+	ctx, cancel := opCtx()
+	defer cancel()
 	col := this.mongoDatabase.Collection(this.collectionName)
 	opts := options.FindOne().
 		SetProjection(bson.D{{Key: this.uniqueId, Value: 1}})
-	result := col.FindOne(context.Background(), bson.D{{Key: this.colAccountId, Value: accountId}, {Key: this.colRegionId, Value: regionId}}, opts)
+	result := col.FindOne(ctx, bson.D{{Key: this.colAccountId, Value: accountId}, {Key: this.colRegionId, Value: regionId}}, opts)
 	if result == nil || result.Err() == mongo.ErrNoDocuments {
 		return 0, nil
 	}
@@ -388,15 +455,17 @@ func (this *MongoCollectionPlayer) FindPlayerIdByAccountId(accountId int64, regi
 }
 
 func (this *MongoCollectionPlayer) FindPlayerIdsByAccountId(accountId int64, regionId int32) ([]int64, error) {
+	ctx, cancel := opCtx()
+	defer cancel()
 	col := this.mongoDatabase.Collection(this.collectionName)
 	opts := options.Find().
 		SetProjection(bson.D{{Key: this.uniqueId, Value: 1}})
-	cursor, err := col.Find(context.Background(), bson.D{{Key: this.colAccountId, Value: accountId}, {Key: this.colRegionId, Value: regionId}}, opts)
+	cursor, err := col.Find(ctx, bson.D{{Key: this.colAccountId, Value: accountId}, {Key: this.colRegionId, Value: regionId}}, opts)
 	if err != nil {
 		return nil, err
 	}
 	var datas []bson.M
-	if err = cursor.All(context.Background(), &datas); err != nil {
+	if err = cursor.All(ctx, &datas); err != nil {
 		return nil, err
 	}
 	playerIds := make([]int64, len(datas), len(datas))
@@ -420,10 +489,12 @@ func (this *MongoCollectionPlayer) FindPlayerIdsByAccountId(accountId int64, reg
 }
 
 func (this *MongoCollectionPlayer) FindAccountIdByPlayerId(playerId int64) (int64, error) {
+	ctx, cancel := opCtx()
+	defer cancel()
 	col := this.mongoDatabase.Collection(this.collectionName)
 	opts := options.FindOne().
 		SetProjection(bson.D{{Key: this.colAccountId, Value: 1}})
-	result := col.FindOne(context.Background(), bson.D{{Key: this.uniqueId, Value: playerId}}, opts)
+	result := col.FindOne(ctx, bson.D{{Key: this.uniqueId, Value: playerId}}, opts)
 	if result == nil || result.Err() == mongo.ErrNoDocuments {
 		return 0, nil
 	}
