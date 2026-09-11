@@ -516,6 +516,10 @@ type MongoDb struct {
 	uri    string
 	dbName string
 
+	// 自定义客户端配置(可选),须在Connect()之前设置
+	// 支持任意options.Client().SetXxx()链式配置,作为通用扩展口
+	clientOptions *options.ClientOptions
+
 	entityDbs map[string]EntityDb
 	kvDbs     map[string]KvDb
 }
@@ -530,6 +534,22 @@ func NewMongoDb(uri, dbName string) *MongoDb {
 		entityDbs: make(map[string]EntityDb),
 		kvDbs:     make(map[string]KvDb),
 	}
+}
+
+// SetClientOptions 设置自定义客户端配置,须在Connect()之前调用,返回自身支持链式调用
+// 作为客户端参数的唯一入口,支持任意driver的options.Client().SetXxx()链式配置,例如:
+//
+//	mongoDb := gentity.NewMongoDb(uri, db).
+//	    SetClientOptions(options.Client().
+//	        SetAppName("game_101").          // 连接来源标识,多进程部署排查利器
+//	        SetMaxPoolSize(32).              // 连接池上限(多进程共用MongoDB时收紧,防冲垮实例maxConnections)
+//	        SetMinPoolSize(16).              // 预热连接,防停服/开服突发时冷启动建连
+//	        SetMaxConnIdleTime(time.Minute)) // 闲置连接回收
+//
+// 合并优先级:uri参数 -> 本配置,即本配置显式设置的项覆盖uri同名参数,未设置的项沿用uri
+func (this *MongoDb) SetClientOptions(opts ...*options.ClientOptions) *MongoDb {
+	this.clientOptions = options.MergeClientOptions(opts...)
+	return this
 }
 
 // 注册普通Entity对应的collection
@@ -589,7 +609,13 @@ func (this *MongoDb) GetKvDb(name string) KvDb {
 }
 
 func (this *MongoDb) Connect() bool {
-	client, err := mongo.Connect(options.Client().ApplyURI(this.uri))
+	// 配置合并优先级:uri参数 -> SetClientOptions
+	// MergeClientOptions取后者显式设置的非零项覆盖前者,未设置的项沿用前者
+	clientOpts := options.Client().ApplyURI(this.uri)
+	if this.clientOptions != nil {
+		clientOpts = options.MergeClientOptions(clientOpts, this.clientOptions)
+	}
+	client, err := mongo.Connect(clientOpts)
 	if err != nil {
 		glog.Error("ConnectError", "err", err)
 		return false
