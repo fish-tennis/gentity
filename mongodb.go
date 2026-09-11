@@ -14,11 +14,15 @@ import (
 // mongoOpTimeout 单次CRUD操作的超时时间(纳秒)
 // 防止MongoDB卡顿时调用协程被永久阻塞(如玩家协程的滚动存档/下线保存,
 // 一旦阻塞会停顿该玩家的全部消息处理)
+// 默认60s:该超时针对的是概率极低的"静默卡死"场景(对端假死/静默断连,详见各场景说明),
+// 设计取向宁大勿小——健康场景P99延迟<50ms,停服排队也在十几秒级,远小于默认值;
+// 取大值可避免对排队等待、负载抖动等非卡死情况造成误伤(误伤不丢数据但落库推迟)
+// (超时失败不丢数据:留在Redis由Fix链路兜底,但落库推迟到玩家下次上线)
 // atomic存储,支持应用层在运行中调整(如根据MongoDB负载动态放宽/收紧)
 var mongoOpTimeout atomic.Int64
 
 func init() {
-	SetMongoOpTimeout(5 * time.Second)
+	SetMongoOpTimeout(time.Minute)
 }
 
 // SetMongoOpTimeout 设置单次CRUD操作超时时间,应用层可在启动时或运行中调整
