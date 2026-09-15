@@ -3,7 +3,7 @@
 
 基于gentity,游戏服务器框架可以更快的构建
 
-![gentity](https://github.com/fish-tennis/doc/blob/master/imgs/gentity/gentity.png)
+![gentity](imgs/gentity.png)
 
 ## Entity-Component
 Entity-Component模式是类似Unity的GameObject-Component的实体组件模式,便于组件解耦
@@ -90,7 +90,7 @@ func (this *Quest) TriggerPlayerEntryGame(event *EventPlayerEntryGame) {
 
 同时,RoutineEntity内置了一个协程安全的计时器
 
-![routine entity](https://github.com/fish-tennis/doc/blob/master/imgs/gentity/routineentity.png)
+![routine entity](imgs/routineentity.png)
 
 示例:[gserver](https://github.com/fish-tennis/gserver) 里的玩家对象Player
 
@@ -99,7 +99,7 @@ func (this *Quest) TriggerPlayerEntryGame(event *EventPlayerEntryGame) {
 
 示例:[gserver](https://github.com/fish-tennis/gserver) 里的公会对象Guild
 
-![distributed entity](https://github.com/fish-tennis/doc/blob/master/imgs/gentity/distributedentity.png)
+![distributed entity](imgs/distributedentity.png)
 
 ## 数据库分片(MongoDB Sharding)
 分片是可选项:注册collection时通过`ShardKeyType`指定分片方式,`ShardKeyNone`表示不分片
