@@ -164,7 +164,7 @@ func TestTimerEntries_RunAddTimerNoSkip(t *testing.T) {
 	})
 
 	// Run执行
-	te.Run(time.Now())
+	te.Run()
 
 	// timer1和timer2都应被执行,顺序应为1,2
 	// timer3是Run期间新加的,本轮不应执行(下次Run才执行)
@@ -177,7 +177,7 @@ func TestTimerEntries_RunAddTimerNoSkip(t *testing.T) {
 
 	// 第二次Run: timer3应该被执行
 	callOrder = nil
-	te.Run(time.Now())
+	te.Run()
 
 	if len(callOrder) != 1 || callOrder[0] != 3 {
 		t.Errorf("timer3 should execute in second Run, got: %v", callOrder)
@@ -209,7 +209,7 @@ func TestTimerEntries_RunAddTimerWithRecurring(t *testing.T) {
 		return 0
 	})
 
-	te.Run(time.Now())
+	te.Run()
 
 	// A和B都应执行,顺序1,2; C是新加的,本轮不执行
 	if len(calls) != 2 {

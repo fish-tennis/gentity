@@ -20,7 +20,7 @@ func TestTimerEntries_AddAndRun(t *testing.T) {
 		return 0
 	})
 
-	ran := te.Run(time.Now())
+	ran := te.Run()
 	if !ran {
 		t.Fatal("Run should return true since a job ran")
 	}
@@ -48,7 +48,7 @@ func TestTimerEntries_After(t *testing.T) {
 
 	// 等待足够时间使 entry.next 过期
 	time.Sleep(time.Millisecond * 50)
-	te.Run(time.Now())
+	te.Run()
 
 	if counter != 1 {
 		t.Fatalf("expected counter 1, got %d", counter)
@@ -70,7 +70,7 @@ func TestTimerEntries_Recurring(t *testing.T) {
 
 	// 第一次 Run：等待 d 后到期执行
 	time.Sleep(d * 3)
-	te.Run(time.Now())
+	te.Run()
 	if counter != 1 {
 		t.Fatalf("after first run: expected counter 1, got %d", counter)
 	}
@@ -80,7 +80,7 @@ func TestTimerEntries_Recurring(t *testing.T) {
 
 	// 再等待 d，第二次 Run：job 被再次调用，entry.next 已被更新
 	time.Sleep(d * 3)
-	te.Run(time.Now())
+	te.Run()
 	if counter != 2 {
 		t.Fatalf("after second run: expected counter 2, got %d", counter)
 	}
@@ -111,7 +111,7 @@ func TestTimerEntries_MultipleTimers(t *testing.T) {
 		return 0
 	})
 
-	ran := te.Run(now)
+	ran := te.Run()
 	if !ran {
 		t.Fatal("Run should return true since some jobs ran")
 	}
@@ -207,4 +207,291 @@ func TestTimerEntries_Stop(t *testing.T) {
 	te.Start()
 	// Stop 停止 Timer，不应 panic
 	te.Stop()
+}
+
+// ==================== 修复验证用例 ====================
+
+// TestTimerEntries_BinaryInsertKeepsOrder 验证#6:乱序添加时二分插入保持entries按next升序
+func TestTimerEntries_BinaryInsertKeepsOrder(t *testing.T) {
+	te := NewTimerEntries()
+	now := time.Now()
+
+	// 乱序添加:now+5s, now-1s, now+10s, now+3s, now
+	te.AddTimer(now.Add(5*time.Second), func() time.Duration { return 0 })
+	te.AddTimer(now.Add(-1*time.Second), func() time.Duration { return 0 })
+	te.AddTimer(now.Add(10*time.Second), func() time.Duration { return 0 })
+	te.AddTimer(now.Add(3*time.Second), func() time.Duration { return 0 })
+	te.AddTimer(now, func() time.Duration { return 0 })
+
+	want := []time.Duration{-1 * time.Second, 0, 3 * time.Second, 5 * time.Second, 10 * time.Second}
+	if len(te.entries) != len(want) {
+		t.Fatalf("expected %d entries, got %d", len(want), len(te.entries))
+	}
+	for i, d := range want {
+		if !te.entries[i].next.Equal(now.Add(d)) {
+			t.Errorf("entries[%d] should be now%+v, got %v", i, d, te.entries[i].next.Sub(now))
+		}
+	}
+}
+
+// TestTimerEntries_SameNextTimeFIFO 验证#6附带语义:相同到期时间的timer按添加顺序(FIFO)执行
+func TestTimerEntries_SameNextTimeFIFO(t *testing.T) {
+	te := NewTimerEntries()
+	now := time.Now()
+	var order []int
+
+	for i := 1; i <= 3; i++ {
+		idx := i
+		te.AddTimer(now.Add(-time.Second), func() time.Duration {
+			order = append(order, idx)
+			return 0
+		})
+	}
+
+	te.Run()
+	if len(order) != 3 || order[0] != 1 || order[1] != 2 || order[2] != 3 {
+		t.Fatalf("expected FIFO order [1 2 3], got %v", order)
+	}
+}
+
+// TestTimerEntries_ZeroTimeEntryNotRemoved 验证#1:Run期间job中添加的零值时间entry不被误删
+// 旧实现用next零值做删除标记,该entry会在Run结束的删除循环中被误删
+func TestTimerEntries_ZeroTimeEntryNotRemoved(t *testing.T) {
+	te := NewTimerEntriesWithArgs(nil, time.Millisecond)
+	te.Start()
+	defer te.Stop()
+
+	var zeroRan bool
+	te.AddTimer(time.Now().Add(-time.Second), func() time.Duration {
+		// Run期间添加零值时间的timer,语义上是"下次Run立即执行"
+		te.AddTimer(time.Time{}, func() time.Duration {
+			zeroRan = true
+			return 0
+		})
+		return 0
+	})
+
+	te.Run()
+
+	// 第一次Run结束后,零值entry不应被误删
+	if len(te.entries) != 1 {
+		t.Fatalf("zero-time entry should survive first Run, got %d entries", len(te.entries))
+	}
+
+	// 第二次Run:零值时间视为已到期,应被执行
+	te.Run()
+	if !zeroRan {
+		t.Fatal("zero-time entry should execute in second Run")
+	}
+	if len(te.entries) != 0 {
+		t.Fatalf("expected 0 entries after second Run, got %d", len(te.entries))
+	}
+}
+
+// TestTimerEntries_JobPanicRecoversRunning 验证#2:job panic后running标志被defer恢复,定时器系统仍可用
+// 注:panic发生在removed标记之前,该entry不会被Run清理,下次Run会再次调用job
+// (生产环境routine_entity的外层recover会终结协程,不影响;此处用只panic一次的job适配该语义)
+func TestTimerEntries_JobPanicRecoversRunning(t *testing.T) {
+	te := NewTimerEntriesWithArgs(nil, time.Millisecond)
+	te.Start()
+	defer te.Stop()
+
+	var afterPanicRan bool
+	var panicked bool
+	te.AddTimer(time.Now().Add(-2*time.Second), func() time.Duration {
+		if !panicked {
+			panicked = true
+			panic("job panic test")
+		}
+		// 第二次Run再次调用时正常返回,完成该entry的清理
+		return 0
+	})
+
+	func() {
+		defer func() {
+			if err := recover(); err == nil {
+				t.Fatal("expected panic from job")
+			}
+		}()
+		te.Run()
+	}()
+
+	// panic后running应已被defer恢复为false
+	if te.running {
+		t.Fatal("running should be false after job panic")
+	}
+	// panic后新注册的timer应走正常插入路径并触发
+	te.AddTimer(time.Now().Add(-1*time.Second), func() time.Duration {
+		afterPanicRan = true
+		return 0
+	})
+	te.Run()
+	if !afterPanicRan {
+		t.Fatal("timer added after job panic should execute normally")
+	}
+}
+
+// TestTimerEntries_BeforeStartNoPanic 验证#3:Start之前AddTimer/Run不会因Timer为nil而panic
+func TestTimerEntries_BeforeStartNoPanic(t *testing.T) {
+	te := NewTimerEntries()
+
+	var ranBeforeStart, ranAfterStart bool
+	// Start前AddTimer:内部resetTime遇到nil Timer直接返回
+	te.AddTimer(time.Now().Add(-time.Second), func() time.Duration {
+		ranBeforeStart = true
+		return 0
+	})
+	// Start前Run:job正常执行,不panic
+	te.Run()
+	if !ranBeforeStart {
+		t.Fatal("expired job should run before Start")
+	}
+
+	// Start后一切正常
+	te.Start()
+	defer te.Stop()
+	te.AddTimer(time.Now().Add(-time.Second), func() time.Duration {
+		ranAfterStart = true
+		return 0
+	})
+	te.Run()
+	if !ranAfterStart {
+		t.Fatal("job should run after Start")
+	}
+}
+
+// TestTimerEntries_RunUsesNowFuncBase 验证#5:Run内部使用Now()而非真实时间
+// fakeNow远早于真实时间,若Run误用time.Now(),entry会被误判为早已到期而错误执行
+func TestTimerEntries_RunUsesNowFuncBase(t *testing.T) {
+	fakeNow := time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
+	te := NewTimerEntriesWithArgs(func() time.Time {
+		return fakeNow
+	}, time.Millisecond)
+
+	var ran bool
+	te.AddTimer(fakeNow.Add(10*time.Second), func() time.Duration {
+		ran = true
+		return 0
+	})
+
+	te.Run()
+	if ran {
+		t.Fatal("job should not run: next is 10s after fake now")
+	}
+	if len(te.entries) != 1 {
+		t.Fatalf("expected 1 entry, got %d", len(te.entries))
+	}
+
+	// 逻辑时间前进11秒,entry到期执行
+	fakeNow = fakeNow.Add(11 * time.Second)
+	te.Run()
+	if !ran {
+		t.Fatal("job should run after fake now advanced past next")
+	}
+}
+
+// TestTimerEntries_TimeOffsetBase 验证#5:负timeOffset下Run与注册使用同一逻辑时间基准
+// offset=-24h时,next=Now()+10s(即真实时间-24h+10s,早已"过期"于真实时间),
+// 若Run误用真实时间判断,该entry会被立即错误执行
+func TestTimerEntries_TimeOffsetBase(t *testing.T) {
+	te := NewTimerEntries()
+	te.SetTimeOffset(-24 * time.Hour)
+
+	var ran bool
+	te.After(10*time.Second, func() time.Duration {
+		ran = true
+		return 0
+	})
+
+	te.Run()
+	if ran {
+		t.Fatal("job should not run: next is 10s after logical now")
+	}
+	if len(te.entries) != 1 {
+		t.Fatalf("expected 1 entry, got %d", len(te.entries))
+	}
+}
+
+// TestTimerEntries_TimerChanRecurringWakeup 验证timer链路:Run后resetTime重新武装timer,recurring可再次唤醒
+func TestTimerEntries_TimerChanRecurringWakeup(t *testing.T) {
+	te := NewTimerEntriesWithArgs(nil, 5*time.Millisecond)
+	te.Start()
+	defer te.Stop()
+
+	var counter int
+	d := 30 * time.Millisecond
+	te.After(d, func() time.Duration {
+		counter++
+		return d
+	})
+
+	waitFire := func() bool {
+		select {
+		case <-te.TimerChan():
+			return true
+		case <-time.After(2 * time.Second):
+			return false
+		}
+	}
+
+	if !waitFire() {
+		t.Fatal("timer should fire first time")
+	}
+	te.Run()
+	if counter != 1 {
+		t.Fatalf("expected counter 1, got %d", counter)
+	}
+
+	// recurring重调度后,被Reset的timer应能再次触发
+	if !waitFire() {
+		t.Fatal("timer should fire again after recurring reschedule")
+	}
+	te.Run()
+	if counter != 2 {
+		t.Fatalf("expected counter 2, got %d", counter)
+	}
+}
+
+// TestTimerEntries_ManyTimersRandomInsert 验证批量乱序注册:到期按next升序执行,未到期保留且有序
+func TestTimerEntries_ManyTimersRandomInsert(t *testing.T) {
+	te := NewTimerEntriesWithArgs(nil, time.Millisecond)
+	te.Start()
+	defer te.Stop()
+
+	now := time.Now()
+	const total = 100
+	const expired = 30
+	var expiredOrder []int
+
+	// 先添加未来的70个,再倒序添加已过期的30个
+	for i := expired; i < total; i++ {
+		te.AddTimer(now.Add(time.Duration(i+1)*time.Second), func() time.Duration { return 0 })
+	}
+	for i := expired - 1; i >= 0; i-- {
+		idx := i
+		te.AddTimer(now.Add(-time.Duration(idx+1)*time.Second), func() time.Duration {
+			expiredOrder = append(expiredOrder, idx)
+			return 0
+		})
+	}
+
+	te.Run()
+	if len(expiredOrder) != expired {
+		t.Fatalf("expected %d expired jobs run, got %d", expired, len(expiredOrder))
+	}
+	// 已到期的按next升序执行:-30s(idx=29)最先,-1s(idx=0)最后
+	for i, v := range expiredOrder {
+		if want := expired - 1 - i; v != want {
+			t.Fatalf("expired jobs should run in next-ascending order: order[%d]=%d, want %d", i, v, want)
+		}
+	}
+	// 未到期的保留且仍有序
+	if len(te.entries) != total-expired {
+		t.Fatalf("expected %d remaining entries, got %d", total-expired, len(te.entries))
+	}
+	for i := 1; i < len(te.entries); i++ {
+		if te.entries[i].next.Before(te.entries[i-1].next) {
+			t.Fatalf("remaining entries not sorted at index %d", i)
+		}
+	}
 }

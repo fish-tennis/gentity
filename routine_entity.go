@@ -203,7 +203,7 @@ func (this *BaseRoutineEntity) RunProcessRoutine(routineEntity RoutineEntity, ro
 				}
 			case timeNow := <-this.timerEntries.TimerChan():
 				// 计时器的回调在RoutineEntity协程里执行,所以是协程安全的
-				if this.timerEntries.Run(timeNow) {
+				if this.timerEntries.Run() {
 					if routineArgs.AfterTimerExecuteFunc != nil {
 						routineArgs.AfterTimerExecuteFunc(routineEntity, timeNow)
 					}
