@@ -184,6 +184,15 @@ func (this *BaseRoutineEntity) RunProcessRoutine(routineEntity RoutineEntity, ro
 		if this.timerEntries == nil {
 			this.timerEntries = NewTimerEntries()
 		}
+		// timer job panic时不让panic终结实体协程:记录日志和堆栈后,
+		// panic的job被移除,协程继续处理后续消息和timer
+		if this.timerEntries.panicHandler == nil {
+			this.timerEntries.SetPanicHandler(func(job TimerJob, err any) {
+				glog.Error("timer job panic", "err", err, "entityId", this.GetId())
+				stackBuf := make([]byte, 1<<12)
+				glog.Error(string(stackBuf[:runtime.Stack(stackBuf, false)]))
+			})
+		}
 		this.timerEntries.Start()
 		for {
 			select {

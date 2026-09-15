@@ -495,3 +495,127 @@ func TestTimerEntries_ManyTimersRandomInsert(t *testing.T) {
 		}
 	}
 }
+
+// TestTimerEntries_ResetDrainsStaleValue 验证防御#1:resetTime在Reset前排空channel中未读的stale值
+// 场景:timer已触发但事件循环忙于其他消息未读取,此期间注册新timer触发resetTime
+func TestTimerEntries_ResetDrainsStaleValue(t *testing.T) {
+	te := NewTimerEntriesWithArgs(nil, 20*time.Millisecond)
+	te.Start()
+	defer te.Stop()
+
+	var firstRan, secondRan bool
+	// 第一个timer很快到期,其值留在channel中未被读取(模拟事件循环忙于其他消息)
+	te.After(10*time.Millisecond, func() time.Duration {
+		firstRan = true
+		return 0
+	})
+	time.Sleep(100 * time.Millisecond)
+
+	// 消息处理期间注册新timer,内部resetTime应Stop+drain掉stale值再Reset
+	te.After(30*time.Millisecond, func() time.Duration {
+		secondRan = true
+		return 0
+	})
+
+	// stale值已被排空:立即非阻塞读取应无值
+	// (修复前这里能读到stale值,事件循环会立即Run一次空跑)
+	select {
+	case <-te.TimerChan():
+		t.Fatal("stale value should have been drained by resetTime")
+	default:
+	}
+
+	// 新timer正常触发:第一个job在第一次唤醒执行,
+	// 第二个job(next在注册后30ms)可能需要再等一次唤醒,循环等待直到都执行
+	deadline := time.After(2 * time.Second)
+	for !(firstRan && secondRan) {
+		select {
+		case <-te.TimerChan():
+			te.Run()
+		case <-deadline:
+			t.Fatalf("timers should fire, got first=%v second=%v", firstRan, secondRan)
+		}
+	}
+}
+
+// TestTimerEntries_TimerChanBeforeStartPanics 验证防御#3:Start前调用TimerChan快速失败
+// (否则返回nil channel,select会永久静默阻塞)
+func TestTimerEntries_TimerChanBeforeStartPanics(t *testing.T) {
+	te := NewTimerEntries()
+
+	defer func() {
+		if err := recover(); err == nil {
+			t.Fatal("TimerChan before Start should panic")
+		}
+	}()
+	_ = te.TimerChan()
+}
+
+// TestTimerEntries_PanicHandlerKeepsRunning 验证:设置panicHandler后job panic不传播出Run,
+// panic的job被移除不再重复执行,同轮后续job正常执行,组件持续可用
+func TestTimerEntries_PanicHandlerKeepsRunning(t *testing.T) {
+	te := NewTimerEntriesWithArgs(nil, time.Millisecond)
+	te.Start()
+	defer te.Stop()
+
+	var handlerErr any
+	var handlerJob TimerJob
+	te.SetPanicHandler(func(job TimerJob, err any) {
+		handlerJob = job
+		handlerErr = err
+	})
+
+	var ranAfterPanic bool
+	var panicCount int
+	te.AddTimer(time.Now().Add(-2*time.Second), func() time.Duration {
+		panicCount++
+		panic("job panic test")
+	})
+	// 同轮的后续job也应正常执行
+	te.AddTimer(time.Now().Add(-1*time.Second), func() time.Duration {
+		ranAfterPanic = true
+		return 0
+	})
+
+	// Run不panic,正常返回
+	ran := te.Run()
+	if !ran {
+		t.Fatal("Run should return true")
+	}
+	if handlerErr != "job panic test" {
+		t.Fatalf("panicHandler should receive err, got %v", handlerErr)
+	}
+	if handlerJob == nil {
+		t.Fatal("panicHandler should receive the panicking job")
+	}
+	if !ranAfterPanic {
+		t.Fatal("job after panicking job should run in the same Run")
+	}
+	// panic的job与已执行的job都被移除
+	if len(te.entries) != 0 {
+		t.Fatalf("panicking job should be removed, got %d entries", len(te.entries))
+	}
+
+	// 再次Run:panic的job不会重复执行
+	te.Run()
+	if panicCount != 1 {
+		t.Fatalf("panicking job should not re-execute, got %d panics", panicCount)
+	}
+}
+
+// TestTimerEntries_PanicPropagatesWithoutHandler 验证默认语义:未设置panicHandler时panic正常传播
+func TestTimerEntries_PanicPropagatesWithoutHandler(t *testing.T) {
+	te := NewTimerEntriesWithArgs(nil, time.Millisecond)
+	te.Start()
+	defer te.Stop()
+
+	te.AddTimer(time.Now().Add(-time.Second), func() time.Duration {
+		panic("no handler")
+	})
+	defer func() {
+		if err := recover(); err == nil {
+			t.Fatal("panic should propagate without panicHandler")
+		}
+	}()
+	te.Run()
+}

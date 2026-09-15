@@ -42,6 +42,10 @@ type TimerEntries struct {
 	// Run期间,addEntry只追加不sort/resetTime,避免遍历中的entries被重排导致跳过到期timer;
 	// Run结束后统一sort+resetTime
 	running bool
+	// job panic时的回调(协程内设置)
+	// 设置后Run中job的panic不会传播:panic的job被移除不再重复执行,Run正常完成;
+	// 未设置时panic正常传播,由调用方自行recover
+	panicHandler func(job TimerJob, err any)
 }
 
 func NewTimerEntries() *TimerEntries {
@@ -86,6 +90,14 @@ func (this *TimerEntries) GetTimeOffset() time.Duration {
 
 func (this *TimerEntries) SetTimeOffset(timeOffset time.Duration) {
 	this.timeOffset = timeOffset
+}
+
+// SetPanicHandler 设置job panic时的回调(须在实体协程内调用)
+// 设置后Run中job的panic不再传播(实体协程不会因此退出):
+// panic的job会被移除且不再重复执行,同轮其余job及Run末尾逻辑正常执行
+// 回调在Run执行流程中同步调用,不应再panic
+func (this *TimerEntries) SetPanicHandler(handler func(job TimerJob, err any)) {
+	this.panicHandler = handler
 }
 
 // 指定时间点执行回调
@@ -138,6 +150,16 @@ func (this *TimerEntries) resetTime(now time.Time) {
 	if this.Timer == nil {
 		return
 	}
+	// 按time.Timer文档约定,Reset前需Stop并在已到期时排空channel中未读的值:
+	// timer已触发但值未被事件循环读取时(如协程正忙于处理其他消息),
+	// 直接Reset会残留stale值,被select立即收到后导致一次Run空跑唤醒
+	// (Run路径的值刚被读取,channel已空,select default直接跳过,无额外开销)
+	if !this.Timer.Stop() {
+		select {
+		case <-this.Timer.C:
+		default:
+		}
+	}
 	if len(this.entries) == 0 {
 		this.Timer.Reset(time.Hour * 100000)
 	} else {
@@ -166,13 +188,42 @@ func (this *TimerEntries) Stop() {
 }
 
 func (this *TimerEntries) TimerChan() <-chan time.Time {
+	// Start前Timer为nil,返回nil channel会让select永久静默阻塞,难以排查;
+	// 快速失败,把误用暴露在启动期
+	if this.Timer == nil {
+		panic("TimerEntries: TimerChan called before Start")
+	}
 	return this.Timer.C
+}
+
+// runJob 执行单个job
+// 未设置panicHandler时panic正常传播(零开销,无defer);
+// 设置后捕获panic并回调panicHandler,返回0使Run移除该entry,避免下次Run重复执行再次panic
+func (this *TimerEntries) runJob(entry *timerEntry) (d time.Duration) {
+	if this.panicHandler == nil {
+		return entry.job()
+	}
+	defer func() {
+		if err := recover(); err != nil {
+			this.panicHandler(entry.job, err)
+			d = 0
+		}
+	}()
+	return entry.job()
 }
 
 // 执行到期的timer回调
 // 内部使用Now()作为当前时间,保证与AddTimer/After注册时的next时间基准一致
 // (entries的next由Now()计算,可能带timeOffset或自定义nowFunc;
 // 而timer通道的时间是真实墙上时钟,两者基准不同,不能混用)
+//
+// panic语义:
+// - 设置了SetPanicHandler(默认routine_entity已设置):job的panic被捕获并回调,
+//   panic的job被移除,Run正常完成(sort/resetTime正常执行),组件持续可用
+// - 未设置:panic传播给调用方,跳过Run末尾的sort/resetTime,entries可能不再有序
+//   (如recurring的next已被修改但未重排),而addEntry的二分插入依赖有序不变量——
+//   因此job panic后本组件应视为不可用,不应继续AddTimer/Run;
+//   独立使用本类型且未设置panicHandler时需自行遵守该约定
 func (this *TimerEntries) Run() bool {
 	now := this.Now()
 	removed := false
@@ -190,7 +241,7 @@ func (this *TimerEntries) Run() bool {
 		}
 		// job()里面可能执行append(entries,...)
 		// 新加的entry下次Run才能被执行
-		d := entry.job()
+		d := this.runJob(entry)
 		jobRun = true
 		if d > 0 {
 			entry.next = now.Add(d)
