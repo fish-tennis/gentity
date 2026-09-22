@@ -40,6 +40,12 @@ type RoutineEntityRoutineArgs struct {
 	AfterTimerExecuteFunc func(routineEntity RoutineEntity, t time.Time)
 	// 协程结束时调用
 	EndFunc func(routineEntity RoutineEntity)
+	// TimerEntries的自定义时间接口(可选)
+	// 协程启动时注入:实体的timerEntries未配置自定义now函数时生效
+	// (实体用NewRoutineEntityWithArgs显式配置的优先,不会被覆盖)
+	TimerNowFunc func() time.Time
+	// timer唤醒的最小间隔(可选,注入TimerNowFunc且>0时生效)
+	TimerMinInterval time.Duration
 }
 
 // 独立协程的实体
@@ -60,6 +66,17 @@ func NewRoutineEntity(messageChanLen int) *BaseRoutineEntity {
 		messages:     make(chan any, messageChanLen),
 		stopChan:     make(chan struct{}, 1),
 		timerEntries: NewTimerEntries(),
+	}
+}
+
+// 注入TimerEntries的自定义参数,便于使用自定义的时间接口(nowFunc)
+// nowFunc为nil时使用默认的time.Now()
+// minInterval为timer唤醒的最小间隔,参考NewTimerEntriesWithArgs
+func NewRoutineEntityWithArgs(messageChanLen int, nowFunc func() time.Time, minInterval time.Duration) *BaseRoutineEntity {
+	return &BaseRoutineEntity{
+		messages:     make(chan any, messageChanLen),
+		stopChan:     make(chan struct{}, 1),
+		timerEntries: NewTimerEntriesWithArgs(nowFunc, minInterval),
 	}
 }
 
@@ -182,7 +199,18 @@ func (this *BaseRoutineEntity) RunProcessRoutine(routineEntity RoutineEntity, ro
 		}()
 
 		if this.timerEntries == nil {
-			this.timerEntries = NewTimerEntries()
+			if routineArgs.TimerNowFunc != nil {
+				this.timerEntries = NewTimerEntriesWithArgs(routineArgs.TimerNowFunc, routineArgs.TimerMinInterval)
+			} else {
+				this.timerEntries = NewTimerEntries()
+			}
+		} else if routineArgs.TimerNowFunc != nil && this.timerEntries.nowFunc == nil {
+			// 实体已创建默认的timerEntries且未配置自定义now函数时,由args注入
+			// (实体用NewRoutineEntityWithArgs显式配置的优先,不会被覆盖)
+			this.timerEntries.SetNowFunc(routineArgs.TimerNowFunc)
+			if routineArgs.TimerMinInterval > 0 {
+				this.timerEntries.SetMinInterval(routineArgs.TimerMinInterval)
+			}
 		}
 		// timer job panic时不让panic终结实体协程:记录日志和堆栈后,
 		// panic的job被移除,协程继续处理后续消息和timer
@@ -210,11 +238,13 @@ func (this *BaseRoutineEntity) RunProcessRoutine(routineEntity RoutineEntity, ro
 				if routineArgs.ProcessMessageFunc != nil {
 					routineArgs.ProcessMessageFunc(routineEntity, routineMessage)
 				}
-			case timeNow := <-this.timerEntries.TimerChan():
+			case <-this.timerEntries.TimerChan():
 				// 计时器的回调在RoutineEntity协程里执行,所以是协程安全的
 				if this.timerEntries.Run() {
 					if routineArgs.AfterTimerExecuteFunc != nil {
-						routineArgs.AfterTimerExecuteFunc(routineEntity, timeNow)
+						// 使用Now()获取当前时间,以便获取到自定义now函数的返回结果
+						// (timer通道的时间是真实墙上时钟,与自定义时间基准不一致)
+						routineArgs.AfterTimerExecuteFunc(routineEntity, this.timerEntries.Now())
 					}
 				}
 			}

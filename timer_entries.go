@@ -88,8 +88,15 @@ func (this *TimerEntries) GetTimeOffset() time.Duration {
 	return this.timeOffset
 }
 
+// SetTimeOffset 设置时间偏差,Now()在nowFunc未设置时返回time.Now()+timeOffset
 func (this *TimerEntries) SetTimeOffset(timeOffset time.Duration) {
 	this.timeOffset = timeOffset
+}
+
+// SetNowFunc 设置自定义时间接口(须在实体协程启动前调用,即Start/Run之前)
+// 设置后Now()返回该函数的结果,已有的timeOffset不再生效
+func (this *TimerEntries) SetNowFunc(nowFunc func() time.Time) {
+	this.nowFunc = nowFunc
 }
 
 // SetPanicHandler 设置job panic时的回调(须在实体协程内调用)

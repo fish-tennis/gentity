@@ -619,3 +619,73 @@ func TestTimerEntries_PanicPropagatesWithoutHandler(t *testing.T) {
 	}()
 	te.Run()
 }
+
+// TestRoutineEntityInjectTimerNowFunc 验证:通过RoutineEntityRoutineArgs注入自定义now函数
+// 覆盖两条路径:实体自带默认timerEntries(如NewRoutineEntity构造)和timerEntries为nil
+func TestRoutineEntityInjectTimerNowFunc(t *testing.T) {
+	prevApp := GetApplication()
+	app := &testIntegrationApp{}
+	SetApplication(app)
+	// 注意:协程清理中Done的执行晚于stopped置位,
+	// 必须用wg.Wait()等待Done真正执行完,才能恢复application
+	defer func() {
+		app.wg.Wait()
+		SetApplication(prevApp)
+	}()
+
+	// Stop是异步的:等待协程完成清理(stopped在Done之后置位)再返回,
+	// 避免协程清理时GetApplication已被恢复为nil
+	stopAndWait := func(e *BaseRoutineEntity) {
+		e.Stop()
+		deadline := time.Now().Add(2 * time.Second)
+		for !e.IsStopped() && time.Now().Before(deadline) {
+			time.Sleep(time.Millisecond)
+		}
+	}
+
+	fakeNow := time.Date(2030, 1, 1, 0, 0, 0, 0, time.UTC)
+	nowFunc := func() time.Time { return fakeNow }
+
+	waitInjected := func(entity *BaseRoutineEntity) bool {
+		deadline := time.Now().Add(2 * time.Second)
+		for entity.timerEntries.nowFunc == nil && time.Now().Before(deadline) {
+			time.Sleep(time.Millisecond)
+		}
+		return entity.timerEntries.nowFunc != nil
+	}
+
+	// 路径1:实体用NewRoutineEntity构造(已有默认timerEntries),args注入生效
+	entity1 := NewRoutineEntity(8)
+	if !entity1.RunProcessRoutine(entity1, &RoutineEntityRoutineArgs{
+		TimerNowFunc: nowFunc,
+	}) {
+		t.Fatal("RunProcessRoutine should start")
+	}
+	if !waitInjected(entity1) {
+		t.Fatal("TimerNowFunc should be injected into existing timerEntries")
+	}
+	if !entity1.timerEntries.Now().Equal(fakeNow) {
+		t.Fatalf("Now() should return fake time, got %v", entity1.timerEntries.Now())
+	}
+	stopAndWait(entity1)
+
+	// 路径2:实体用NewRoutineEntityWithArgs显式配置的now函数优先,不被args覆盖
+	ownNow := time.Date(2040, 1, 1, 0, 0, 0, 0, time.UTC)
+	entity4 := NewRoutineEntityWithArgs(8, func() time.Time { return ownNow }, time.Second)
+	if !entity4.RunProcessRoutine(entity4, &RoutineEntityRoutineArgs{
+		TimerNowFunc: nowFunc,
+	}) {
+		t.Fatal("RunProcessRoutine should start")
+	}
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if entity4.timerEntries.Now().Equal(ownNow) {
+			break
+		}
+		time.Sleep(time.Millisecond)
+	}
+	if !entity4.timerEntries.Now().Equal(ownNow) {
+		t.Fatalf("explicitly configured nowFunc should win, got %v", entity4.timerEntries.Now())
+	}
+	stopAndWait(entity4)
+}

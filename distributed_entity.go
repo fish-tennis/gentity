@@ -114,6 +114,8 @@ func (this *DistributedEntityMgr) LoadEntity(entityId int64, entityData interfac
 		},
 		ProcessMessageFunc:    routineArgs.ProcessMessageFunc,
 		AfterTimerExecuteFunc: routineArgs.AfterTimerExecuteFunc,
+		TimerNowFunc:          routineArgs.TimerNowFunc,
+		TimerMinInterval:      routineArgs.TimerMinInterval,
 	})
 	if !startOK {
 		// 协程启动失败,释放锁
